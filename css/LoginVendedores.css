@@ -1,0 +1,236 @@
+/* Reset y estilos base */
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    font-family: 'Montserrat', sans-serif;
+}
+
+body {
+    position: relative;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #333;
+}
+
+body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url(../img/Fondo1.jpg);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.4;
+    z-index: -2;
+}
+
+body::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(1350deg, rgba(10, 36, 99, 0.6) 0%, rgba(0, 0, 0, 0.8) 100%);
+    z-index: -1;
+}
+
+/* Contenedor principal */
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow: hidden;
+    padding: 40px;
+    animation: fadeIn 0.6s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Encabezado de marca */
+.brand-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo {
+    width: 80px;
+    height: auto;
+    margin-bottom: 15px;
+}
+
+.brand-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 5px;
+    letter-spacing: 1px;
+}
+
+.tagline {
+    font-size: 14px;
+    color: #666;
+    font-weight: 400;
+}
+
+/* Formulario */
+.login-form {
+    display: flex;
+    flex-direction: column;
+}
+
+.login-form h2 {
+    text-align: center;
+    margin-bottom: 25px;
+    font-size: 22px;
+    font-weight: 600;
+    color: #333;
+}
+
+.input-group {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.input-group i {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+    font-size: 16px;
+}
+
+.input-group .toggle-password {
+    left: auto;
+    right: 15px;
+    cursor: pointer;
+    color: #666;
+    transition: color 0.3s;
+}
+
+.input-group .toggle-password:hover {
+    color: #0A2463;
+}
+
+.login-form input {
+    width: 100%;
+    padding: 15px 15px 15px 45px;
+    border: 1px solid #000000;
+    border-radius: 8px;
+    font-size: 15px;
+    transition: all 0.3s;
+    background-color: rgba(255, 255, 255, 0.8);
+}
+
+.login-form input:focus {
+    outline: none;
+    border-color: #0A2463;
+    box-shadow: 0 0 0 2px rgba(206, 147, 0, 0.2);
+}
+
+.login-form input::placeholder {
+    color: #999;
+}
+
+/* Botón de login */
+.login-btn {
+    background: linear-gradient(135deg, #0A2463 0%, #0A2463 100%);
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.login-btn:hover {
+    background: linear-gradient(135deg, #0A2463 0%, #0A2463 100%);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+/* Pie de formulario */
+.form-footer {
+    margin-top: 25px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.forgot-password {
+    color: #666;
+    text-decoration: none;
+    transition: color 0.3s;
+    display: inline-block;
+    margin-bottom: 15px;
+}
+
+.forgot-password:hover {
+    color: #0A2463;
+}
+
+.support {
+    color: #888;
+    font-size: 13px;
+    margin-top: 10px;
+}
+
+.support a {
+    color: #666;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.support a:hover {
+    color: #0A2463;
+}
+
+.version {
+    text-align: center;
+    margin-top: 30px;
+    font-size: 12px;
+    color: #999;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .login-container {
+        padding: 30px 20px;
+        margin: 0 15px;
+    }
+    
+    .brand-header h1 {
+        font-size: 24px;
+    }
+    
+    .login-form h2 {
+        font-size: 20px;
+    }
+}

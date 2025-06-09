@@ -1,0 +1,227 @@
+:root {
+  --primary: #0a2463;
+  --secondary: #3e92cc;
+  --success: #4cb944;
+  --warning: #ffc857;
+  --danger: #d8315b;
+  --dark: #2e2e2e;
+  --light: #f5f5f5;
+  --gray: #e0e0e0;
+  --text-light: #7a7a7a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+header {
+  display: grid;
+  grid-template-columns: 0.2fr 1.8fr;
+  background-color: var(--primary);
+  width: 100%;
+}
+
+.header-pt2 > h1 {
+  color: white;
+  text-align: initial;
+  padding-top: 28px;
+  padding-left: -25px;
+}
+
+body {
+  background-color: #fafafa;
+  line-height: 1.6;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.container {
+  max-width: 800px;
+  width: 90%;
+  margin: 2rem auto;
+  background: white;
+  padding: 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--gray);
+}
+
+h1 {
+  color: var(--primary);
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+  position: relative;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--dark);
+  font-size: 0.9rem;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+select {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--gray);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  background-color: #fff;
+  color: var(--dark);
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="tel"]:focus,
+select:focus {
+  border-color: var(--secondary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(62, 146, 204, 0.1);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.horario-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.dia-horario {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem;
+  background-color: #fafafa;
+  border-radius: 8px;
+  border: 1px solid var(--gray);
+}
+
+.dia-horario label {
+  width: 80px;
+  margin-bottom: 0;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.horario-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-grow: 1;
+  justify-content: flex-end;
+}
+
+.horario-inputs span {
+  color: var(--text-light);
+  font-size: 0.9rem;
+}
+
+.cerrado-btn {
+  background-color: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  margin-left: 0.5rem;
+  min-width: 85px;
+}
+
+.cerrado-btn:hover {
+  background-color: rgba(216, 49, 91, 0.05);
+}
+
+.cerrado-btn.active {
+  background-color: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+.btn-submit {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 1rem;
+  transition: all 0.2s ease;
+  letter-spacing: 0.5px;
+}
+
+.btn-submit:hover {
+  background: #081f4d;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(10, 36, 99, 0.1);
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1rem;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  color: var(--primary);
+  margin: 2rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--gray);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1.5rem;
+    width: 95%;
+  }
+
+  .grid-2 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .dia-horario {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.8rem;
+  }
+
+  .horario-inputs {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

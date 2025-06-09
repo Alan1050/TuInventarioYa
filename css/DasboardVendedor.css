@@ -1,0 +1,145 @@
+:root {
+  --primary: #0a2463;
+  --secondary: #3e92cc;
+  --success: #4cb944;
+  --warning: #ffc857;
+  --danger: #d8315b;
+  --dark: #2e2e2e;
+  --light: #f5f5f5;
+  --gray: #e0e0e0;
+  --text-light: #7a7a7a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+header {
+  display: grid;
+  grid-template-columns: 0.2fr 1.8fr;
+  background-color: var(--primary);
+  width: 100%;
+  margin-top: 0;
+}
+
+.header-pt2 > h1 {
+  color: white;
+  text-align: initial;
+  padding-top: 28px;
+  padding-left: -25px;
+}
+
+body {
+  background-color: #fafafa;
+  line-height: 1.6;
+  padding: 0;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+}
+
+section{
+    display: grid;
+    grid-template-columns: 1.5fr .5fr;
+    padding: 20px;
+}
+
+.Data-pt2{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+.Op-1, .Op-2{
+    display: grid;
+    grid-template-rows: 1fr 1fr 1fr 1fr;
+    width: 95%;
+}
+
+.Op-1>button, .Op-2>button{
+    font-size: 19px;
+    margin-top: 20px;
+    border-radius: 10px;
+    background-color: var(--primary);
+    color: var(--light);
+    border: 1px solid transparent;
+    padding: 15px 0px;
+    cursor: pointer;
+}
+
+.inBus{
+    width: 100%;
+    font-size: 18px;
+    padding: 10px 0px 10px 7px;
+    margin-bottom: 25px;
+    border-radius: 5px;
+    border: 1px solid var(--primary);
+    color: var(--primary);
+}
+
+.form-bus{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+.btn-bus{
+    width: 20%;
+    margin-left: 15px;
+    padding: 10px;
+    font-size: 17px;
+    height: min-content;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background-color: var(--primary);
+    color: var(--light);
+}
+
+/* Estilos específicos para la tabla */
+table {
+    width: 90%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    font-size: 16px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+th{
+    text-align: center;
+    padding: 12px 15px;
+    border-bottom: 1px solid #dddddd;
+}
+
+td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #dddddd;
+}
+
+th {
+    background-color: #0a2463;
+    color: white;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+tr:nth-child(even) {
+    background-color: #f5f5f5;
+}
+
+tr:hover {
+    background-color: #f1f1f1;
+}
+
+/* Estilos responsivos para pantallas pequeñas */
+@media screen and (max-width: 768px) {
+    table {
+        font-size: 14px;
+    }
+    
+    th, td {
+        padding: 8px 10px;
+    }
+}
