@@ -50,6 +50,7 @@ if ($RowBusqueda == 1) {
                 }
             });
         </script>
+        
     </body>
     </html>
     ';

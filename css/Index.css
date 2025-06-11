@@ -63,7 +63,8 @@ header {
 }
 
 .hero-image:hover {
-  transform: perspective(1000px) rotateX(0deg);
+  transform: perspective(100000px) rotateX(0deg);
+transform: scale(1.2);
 }
 
 /* Features Section */
