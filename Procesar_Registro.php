@@ -60,40 +60,58 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $HorariosArray = json_encode($horarios);
 
-    // Modificar la consulta SQL para incluir los nombres separados y las iniciales
+    // Modificar la consulta SQL para PostgreSQL
     $InsertDatosNegocios = "INSERT INTO negocios 
-        (Nombre, Propietario, CP, NumTelefono, Ubicacion, Email, Tipo, Horarios, EstadoActividad, PreciosLinea) 
+        (nombre, propietario, cp, numtelefono, ubicacion, email, tipo, horarios, estadoactividad, precioslinea) 
         VALUES (
-            '$nombreNegocio', 
-            '$nombrePropietario',
-            '$codigoPostal', 
-            '$telefono', 
-            '$direccion', 
-            '$email', 
-            '$tipoNegocio', 
-            '$HorariosArray', 
-            'Si', 
-            '$precioPublico'
-        )";
+            $1, $2, $3, $4, $5, $6, $7, $8, 'Si', $9
+        ) RETURNING idnegocio";
 
+    $result = pg_query_params($conn, $InsertDatosNegocios, array(
+        $nombreNegocio, 
+        $nombrePropietario,
+        $codigoPostal, 
+        $telefono, 
+        $direccion, 
+        $email, 
+        $tipoNegocio, 
+        $HorariosArray, 
+        $precioPublico
+    ));
 
-    $queryDatosNegocio = mysqli_query($conn, $InsertDatosNegocios);
+    if ($result) {
+        $row = pg_fetch_row($result);
+        $idNegocio = $row[0];
+    } else {
+        die("Error al insertar negocio: " . pg_last_error($conn));
+    }
 
-            $idNegocio = mysqli_insert_id($conn);
-
-            $codigo = '';
-        for ($i = 0; $i < 5; $i++) {
-            $codigo .= rand(0, 9);
-        }
+    $codigo = '';
+    for ($i = 0; $i < 5; $i++) {
+        $codigo .= rand(0, 9);
+    }
 
     $clave = $inicialPrimerNombre . $inicialSegundoNombre . $inicialPrimerApellido . $inicialSegundoApellido . $codigo;
+    $Pass = $primerNombre . $codigo . $segundoNombre;
+    $Nombre = $primerNombre . $segundoNombre;
 
-        $Pass = $primerNombre . $codigo . $segundoNombre;
-        $Nombre = $primerNombre . $segundoNombre;
+    $DatosDueño = "INSERT INTO vendedor (nombre, apematerno, apepaterno, clave, pass , rol, idnegocio, email, numtelefono) 
+        VALUES ($1, $2, $3, $4, $5, 'Administrador', $6, $7, $8)";
+    
+    $result = pg_query_params($conn, $DatosDueño, array(
+        $Nombre,
+        $primerApellido,
+        $segundoApellido,
+        $clave,
+        $Pass,
+        $idNegocio,
+        $email,
+        $telefono
+    ));
 
-        $DatosDueño = "INSERT INTO vendedor (Nombre, ApeMaterno, ApePaterno, Clave, Pass, Rol, id_Negocio, Email, NumTelefono) 
-        VALUES ('$Nombre','$primerApellido','$segundoApellido','$clave','$Pass','Administrador', '$idNegocio', '$email', '$telefono')";
-        $queryDatosDueño = mysqli_query($conn, $DatosDueño);
+    if (!$result) {
+        die("Error al insertar vendedor: " . pg_last_error($conn));
+    }
 
     // Mostrar SweetAlert2 después del registro exitoso
     echo '

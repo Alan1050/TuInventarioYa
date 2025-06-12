@@ -3,9 +3,8 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-
 header('Content-Type: application/json');
-include '../include/conn.php';
+include '../include/conn.php'; // Debe contener una conexión válida a PostgreSQL
 
 try {
     // Verificar conexión
@@ -13,36 +12,28 @@ try {
         throw new Exception("No se pudo conectar a la base de datos");
     }
 
+    // Consulta SQL para PostgreSQL
     $query = "SELECT * FROM producto";
-    $stmt = $conn->prepare($query);
-    
-    if (!$stmt) {
-        throw new Exception("Error al preparar la consulta: " . $conn->error);
+
+    // Ejecutar consulta usando pg_query
+    $result = pg_query($conn, $query);
+
+    if (!$result) {
+        throw new Exception("Error al ejecutar la consulta: " . pg_last_error($conn));
     }
-    
-    $stmt->execute();
-    
-    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Verificar si hay productos
-    if ($products === false) {
-        $products = []; // Devolver array vacío si no hay resultados
-    }
-    
+
+    // Obtener todos los productos
+    $products = pg_fetch_all($result);
+
+    // Devolver respuesta en JSON
     echo json_encode([
         'success' => true,
-        'data' => $products
+        'data' => $products ?: []
     ]);
-    
-} catch(PDOException $e) {
-    echo json_encode([
-        'success' => false,
-        'error' => 'Error de base de datos: ' . $e->getMessage()
-    ]);
-} catch(Exception $e) {
+
+} catch (Exception $e) {
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()
     ]);
 }
-?>

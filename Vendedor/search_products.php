@@ -5,7 +5,8 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 header('Content-Type: application/json');
-include '../include/conn.php';
+include '../include/conn.php'; // Debe contener una conexión válida usando pg_connect()
+session_start();
 
 try {
     // Verificar conexión
@@ -15,54 +16,34 @@ try {
 
     $term = $_GET['term'] ?? '';
     $barcode = $_GET['barcode'] ?? '';
+    $Id_Negocios2 = intval($_SESSION['idNegocio']);
 
     if (!empty($barcode)) {
-        $query = "SELECT * FROM producto WHERE CodigoBarras = :barcode";
-        $stmt = $conn->prepare($query);
-        
-        if (!$stmt) {
-            throw new Exception("Error al preparar la consulta: " . $conn->error);
-        }
-        
-        $stmt->bindParam(':barcode', $barcode);
+        $query = "SELECT * FROM producto WHERE codigobarras = $1 AND idnegocio = $2";
+        $result = pg_query_params($conn, $query, array($barcode, $Id_Negocios2));
     } else {
-        $query = "SELECT * FROM producto WHERE 
-                 CodigoBarras LIKE :term OR 
-                 Nombre LIKE :term OR 
-                 CodigoProducto LIKE :term OR
-                 Marca LIKE :term";
-        $stmt = $conn->prepare($query);
-        
-        if (!$stmt) {
-            throw new Exception("Error al preparar la consulta: " . $conn->error);
-        }
-        
         $searchTerm = "%$term%";
-        $stmt->bindParam(':term', $searchTerm);
+        $query = "SELECT * FROM producto WHERE 
+                     (codigobarras = $1 OR 
+                     nombre = $1 OR 
+                     codigoproducto = $1) AND idnegocio = $2";
+        $result = pg_query_params($conn, $query, array($searchTerm, $Id_Negocios2));
     }
-    
-    $stmt->execute();
-    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Verificar si hay productos
-    if ($products === false) {
-        $products = []; // Devolver array vacío si no hay resultados
+
+    if ($result === false) {
+        throw new Exception("Error al ejecutar la consulta");
     }
-    
+
+    $products = pg_fetch_all($result);
+
     echo json_encode([
         'success' => true,
-        'data' => $products
+        'data' => $products ?: []
     ]);
-    
-} catch(PDOException $e) {
-    echo json_encode([
-        'success' => false,
-        'error' => 'Error de base de datos: ' . $e->getMessage()
-    ]);
-} catch(Exception $e) {
+
+} catch (Exception $e) {
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()
     ]);
 }
-?>

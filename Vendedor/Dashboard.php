@@ -1,117 +1,146 @@
 <?php
 session_start();
 
-/* ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-var_dump($_SESSION); // Verifica si la sesión se crea */
+// Incluir conexión ya establecida (debe contener $conn como conexión PostgreSQL)
+include '../include/conn.php';
 
-// Configuración de la base de datos
-$db_host = 'localhost';
-$db_name = 'stockcerca';
-$db_user = 'root';
-$db_pass = '';
-
-// Establecer conexión PDO
-try {
-    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
-    $conn->exec("SET NAMES utf8");
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) {
-    $_SESSION['error'] = "Error de conexión: " . $e->getMessage();
+if (!$conn) {
+    die(json_encode(['success' => false, 'error' => 'No hay conexión a la base de datos']));
 }
 
 // Procesar búsqueda de productos
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search_term'])) {
     $searchTerm = $_POST['search_term'];
     
+    // Verificar que idNegocio exista en sesión
+    if (!isset($_SESSION['idNegocio'])) {
+        echo json_encode(['success' => false, 'error' => 'No se encontró el negocio']);
+        exit();
+    }
+
+    $Id_Negocios = intval($_SESSION['idNegocio']);
+
     try {
-        $stmt = $conn->prepare("SELECT * FROM producto WHERE 
-            CodigoBarras = ? OR 
-            Nombre = ? OR 
-            CodigoProducto = ?");
-        $searchParam = "$searchTerm";
-        $stmt->execute([$searchParam, $searchParam, $searchParam]);
-        
-        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        echo json_encode(['success' => true, 'data' => $products]);
-    } catch(PDOException $e) {
-        echo json_encode(['success' => false, 'error' => 'Error en la búsqueda']);
+        // Consulta con paréntesis para agrupar condiciones
+        $query = "SELECT * FROM producto WHERE 
+            (codigobarras = $1 OR 
+             nombre = $1 OR 
+             codigoproducto = $1) AND 
+            idnegocio = $2";
+
+        $result = pg_query_params($conn, $query, array($searchTerm, $Id_Negocios));
+
+        if ($result === false) {
+            throw new Exception("Error al ejecutar la consulta");
+        }
+
+        $products = pg_fetch_all($result);
+
+        echo json_encode([
+            'success' => true,
+            'data' => $products ?: []
+        ]);
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => 'Error en la búsqueda: ' . $e->getMessage()
+        ]);
     }
     exit();
 }
-
 // Procesar venta
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['venta'])) {
     try {
-        $conn->beginTransaction();
-        
+        // Iniciar transacción
+        pg_query($conn, "BEGIN");
+
+        // Validar sesión
+        if (!isset($_SESSION['idNegocio'])) {
+            throw new Exception("No se encontró el ID del negocio");
+        }
+        $Id_Negocios = intval($_SESSION['idNegocio']);
+
         // Generar folio único
         $folio = 'VEN-' . date('YmdHis');
         $total = 0;
         $productosVenta = json_decode($_POST['venta']['productos'], true);
-        
-        // Primero: Calcular el total y validar stock
+
         foreach ($productosVenta as $producto) {
+            if (empty($producto['codigo_barras'])) {
+                throw new Exception("Código de barras no válido en el producto: {$producto['nombre']}");
+            }
+
             $precioUnitario = floatval($producto['precio']);
             $cantidad = floatval($producto['cantidad']);
             $total += $precioUnitario * $cantidad;
-            
+
             // Verificar stock disponible
-            $stmtStock = $conn->prepare("SELECT Existencia FROM producto WHERE CodigoBarras = ?");
-            $stmtStock->execute([$producto['codigo_barras']]);
-            $stock = $stmtStock->fetchColumn();
-            
+            $queryStock = "SELECT existencia FROM producto WHERE codigobarras = $1 AND idnegocio = $2";
+            $resultStock = pg_query_params($conn, $queryStock, array($producto['codigo_barras'], $Id_Negocios));
+
+            if (!$resultStock) {
+                throw new Exception("Error al verificar stock del producto: {$producto['nombre']}");
+            }
+
+            $stockRow = pg_fetch_assoc($resultStock);
+            $stock = $stockRow['existencia'] ?? 0;
+
             if ($stock < $cantidad) {
                 throw new Exception("Stock insuficiente para: {$producto['nombre']} (Stock: $stock, Se requiere: $cantidad)");
             }
         }
-        
-        // Segundo: Insertar venta (solo una vez)
-// Segundo: Insertar venta (solo una vez)
-$stmtVenta = $conn->prepare("INSERT INTO ventas 
-    (Descripcion, PreciosU, Cantidades, CodigosBarras, Marcas, PrecioFinal, ClaveTrabajador, Fecha, Folio, id_Negocio) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)");
-        
-        // Tercero: Procesar cada producto vendido
-foreach ($productosVenta as $producto) {
-    $descripcion = $producto['nombre'];
-    $precioUnitario = floatval($producto['precio']);
-    $cantidad = floatval($producto['cantidad']);
-    $codigoBarras = $producto['codigo_barras'];
-    $marca = $producto['marca'];
-    $precioFinal = $precioUnitario * $cantidad;
-    $ClaveTrabajador = $_SESSION['ClaveTrabajador'];
-    $Id_Negocios = intval($_SESSION['idNegocio']);
-    
-    // Insertar detalle de venta
-    $stmtVenta->execute([
-        $descripcion,
-        $precioUnitario,
-        $cantidad,
-        $codigoBarras,
-        $marca,
-        $precioFinal,
-        $ClaveTrabajador,
-        $folio,
-        $Id_Negocios  // id_Negocio
-    ]);
-            
+
+        // Insertar venta
+        $queryVenta = "INSERT INTO ventas 
+            (descripcion, preciosu, cantidades, codigosbarras, marcas, preciofinal, clavetrabajador, fecha, folio, idnegocio) 
+            VALUES 
+            ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, $9)";
+
+        $ClaveTrabajador = $_SESSION['ClaveTrabajador'];
+
+        foreach ($productosVenta as $producto) {
+            $descripcion = $producto['nombre'];
+            $precioUnitario = floatval($producto['precio']);
+            $cantidad = floatval($producto['cantidad']);
+            $codigoBarras = $producto['codigo_barras'];
+            $marca = $producto['marca'];
+            $precioFinal = $precioUnitario * $cantidad;
+
+            // Ejecutar inserción de venta
+            $resultVenta = pg_query_params($conn, $queryVenta, array(
+                $descripcion,
+                $precioUnitario,
+                $cantidad,
+                $codigoBarras,
+                $marca,
+                $precioFinal,
+                $ClaveTrabajador,
+                $folio,
+                $Id_Negocios
+            ));
+
+            if (!$resultVenta) {
+                throw new Exception("Error al guardar el producto: {$producto['nombre']} - " . pg_last_error($conn));
+            }
+
             // Actualizar stock
-            $stmtUpdate = $conn->prepare("UPDATE producto SET Existencia = Existencia - ? WHERE CodigoBarras = ?");
-            $stmtUpdate->execute([$cantidad, $codigoBarras]);
+            $queryUpdate = "UPDATE producto SET existencia = existencia - $1 WHERE codigobarras = $2 AND idnegocio = $3";
+            $resultUpdate = pg_query_params($conn, $queryUpdate, array($cantidad, $codigoBarras, $Id_Negocios));
+
+            if (!$resultUpdate) {
+                throw new Exception("Error al actualizar stock del producto: {$producto['nombre']} - " . pg_last_error($conn));
+            }
         }
-        
-        $conn->commit();
+
+        // Confirmar transacción
+        pg_query($conn, "COMMIT");
+
         $_SESSION['message'] = "Venta realizada con éxito. Folio: $folio - Total: $" . number_format($total, 2);
-    } catch(PDOException $e) {
-        $conn->rollBack();
-        $_SESSION['error'] = "Error al procesar la venta: " . $e->getMessage();
-    } catch(Exception $e) {
-        $conn->rollBack();
+    } catch (Exception $e) {
+        pg_query($conn, "ROLLBACK");
         $_SESSION['error'] = $e->getMessage();
     }
-    
+
     header("Location: Dashboard.php");
     exit();
 }
@@ -123,13 +152,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
         $folio = 'COT-' . date('YmdHis');
         $total = 0;
         $productos = [];
-        
-        // Preparar datos de la cotización
+
         foreach ($_POST['cotizacion']['productos'] as $producto) {
             $precio = floatval($producto['precio']);
             $cantidad = floatval($producto['cantidad']);
             $subtotal = $precio * $cantidad;
-            
+
             $productos[] = [
                 'nombre' => $producto['nombre'],
                 'precio' => $precio,
@@ -138,19 +166,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
             ];
             $total += $subtotal;
         }
-        
+
         $_SESSION['cotizacion'] = [
             'folio' => $folio,
             'productos' => $productos,
             'total' => $total,
             'fecha' => date('Y-m-d H:i:s')
         ];
-        
+
         $_SESSION['message'] = "Cotización generada. Folio: $folio - Total: $" . number_format($total, 2);
-    } catch(Exception $e) {
+    } catch (Exception $e) {
         $_SESSION['error'] = "Error al generar cotización: " . $e->getMessage();
     }
-    
+
     header("Location: Dashboard.php");
     exit();
 }
@@ -497,39 +525,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
             });
             
             // Función para agregar producto al carrito
-           function addProductToCart(product) {
-    // Convertir existencia a float por si acaso
-    const existencia = parseFloat(product.Existencia);
-    
-    // Agregar al objeto cart
-    cart[product.CodigoBarras] = {
-        nombre: product.Nombre,
-        precio: parseFloat(product.Precio),
-        cantidad: 1.0, // Iniciar con valor decimal
+function addProductToCart(product) {
+    // Convertir existencia a float
+    const existencia = parseFloat(product.existencia);
+    const precio = parseFloat(product.precio);
+
+    // Agregar al carrito
+    cart[product.codigobarras] = {
+        nombre: product.nombre,
+        precio: precio,
+        cantidad: 1.0,
         stock: existencia,
-        codigo_barras: product.CodigoBarras,
-        marca: product.Marca
+        codigo_barras: product.codigobarras,
+        marca: product.marca
     };
-    
+
     // Crear fila en la tabla
     const row = document.createElement('tr');
     row.className = 'product-row';
-    row.dataset.barcode = product.CodigoBarras;
-    
+    row.dataset.barcode = product.codigobarras;
+
     row.innerHTML = `
-        <td>${product.Nombre}</td>
-        <td>$${parseFloat(product.Precio).toFixed(2)}</td>
+        <td>${product.nombre}</td>
+        <td>$${precio.toFixed(2)}</td>
         <td>
-            <input type="number" name="cantidad" value="1.00" min="0.01" step="0.01" max="${existencia}" 
-                onchange="updateQuantity('${product.CodigoBarras}', this.value)">
+            <input type="number" name="cantidad" value="1.00" min="0.01" step="0.01" max="${existencia.toFixed(2)}"
+                onchange="updateQuantity('${product.codigobarras}', this.value)">
         </td>
         <td>${existencia.toFixed(2)}</td>
-        <td class="subtotal">$${parseFloat(product.Precio).toFixed(2)}</td>
+        <td class="subtotal">$${precio.toFixed(2)}</td>
         <td>
-            <button class="btn-eliminar" onclick="removeProduct('${product.CodigoBarras}')">Eliminar</button>
+            <button class="btn-eliminar" onclick="removeProduct('${product.codigobarras}')">Eliminar</button>
         </td>
     `;
-    
+
     productsTableBody.appendChild(row);
     updateTotal();
 }
