@@ -33,7 +33,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             'fin' => empty($_POST['lunesFin']) ? 'Cerrado' : $_POST['lunesFin']
         ),
         'martes' => array(
-            'inicio' => empty($_POST['martesInicio']) ? 'Cerrado' : $_POST['lunesInicio'],
+            'inicio' => empty($_POST['martesInicio']) ? 'Cerrado' : $_POST['martesInicio'],
             'fin' => empty($_POST['martesFin']) ? 'Cerrado' : $_POST['martesFin']
         ),
         'miercoles' => array(
@@ -109,6 +109,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $telefono
     ));
 
+
     if (!$result) {
         die("Error al insertar vendedor: " . pg_last_error($conn));
     }
@@ -147,6 +148,64 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     </body>
     </html>
     ';
+
+    echo '
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro Exitoso</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script> 
+    <script type="text/javascript">
+        (function(){
+            emailjs.init("m08KhDfnF_sAY8vNM"); // Tu Public Key
+        })();
+    </script>
+</head>
+<body>
+    <script>
+        Swal.fire({
+            title: "¡Registro Exitoso!",
+            html: `El negocio <b>'.$nombreNegocio.'</b> ha sido registrado correctamente.<br><br>
+                   Tu prueba de 7 días gratis inicia ahora.<br><br>
+                   Te llegará un correo con la clave de acceso.`,
+            icon: "success",
+            confirmButtonText: "Aceptar",
+            customClass: {
+                popup: "animated bounceIn",
+                confirmButton: "btn-success"
+            },
+            buttonsStyling: false,
+            timer: 10000,
+            timerProgressBar: true,
+            willClose: () => {
+                window.location.href = "index.html";
+            }
+        });
+
+        // Enviar correo usando EmailJS desde frontend
+        document.addEventListener("DOMContentLoaded", function() {
+            const templateParams = {
+                nombre: "'.$nombrePropietario.'",
+                negocioName: "'.$nombreNegocio.'",
+                clave: "'.$clave.'",
+                pass: "'.$Pass.'",
+                email: "'.$email.'"
+            };
+
+            emailjs.send("service_a2o1ztr", "template_cnfcw85", templateParams)
+                .then(function(response) {
+                    console.log("✅ Correo enviado:", response.status, response.text);
+                }, function(error) {
+                    console.error("❌ Error al enviar correo:", error);
+                });
+        });
+    </script>
+</body>
+</html>
+';
     
 } else {
     // Si alguien intenta acceder directamente al script sin enviar el formulario

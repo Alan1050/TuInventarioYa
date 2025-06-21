@@ -1,14 +1,22 @@
 <?php
-$dbhost = "aws-0-us-east-1.pooler.supabase.com"; // Nuevo host
-$dbport = "5432"; // Puerto de PostgreSQL
-$dbname = "postgres"; // Nombre de la base de datos
-$dbuser = "postgres.qghixtzvsjyokajkfrmw"; // Usuario con formato correcto
-$dbpass = "AEMD100!a10"; // Tu contraseña
+// Configuración de la conexión
+$dbhost = "localhost";
+$dbport = "5432";
+$dbname = "sistema"; // Recuerda cambiar esto si creas otra base dedicada
+$dbuser = "postgres";
+$dbpass = "Alan10";
 
-$conn = pg_connect("host=$dbhost port=$dbport dbname=$dbname user=$dbuser password=$dbpass");
+// Cadena de conexión
+$connection_string = "host={$dbhost} port={$dbport} dbname={$dbname} user={$dbuser} password={$dbpass}";
 
+// Conectar a PostgreSQL
+$conn = pg_connect($connection_string);
+
+// Verificar si hay errores de conexión
 if (!$conn) {
-    die("Error de conexión: " . pg_last_error());
+    die("Error al conectar a PostgreSQL: " . pg_last_error());
 }
+
+// Opcional: mensaje de éxito (desactivar en producción)
 
 ?>

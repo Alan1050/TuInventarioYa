@@ -10,6 +10,13 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="css/RegistroNegocio.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script> 
+<script type="text/javascript">
+  (function(){
+    emailjs.init("m08KhDfnF_sAY8vNM"); // Tu Public Key
+  })();
+</script>
   </head>
   <body>
 
@@ -22,7 +29,8 @@
       </div>
     </header>
 
-    <form action="Procesar_Registro.php" method="post" class="container">
+    <!--<form action="Procesar_Registro.php" method="post" class="container" autocomplete="off">-->
+     <form class="container" autocomplete="off" id="registroForm">
       <h1>Registro de Negocio</h1>
       <div id="registroNegocio" >
         <div class="grid-2">
@@ -241,7 +249,51 @@
       });
     </script>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("registroForm");
 
+    form.addEventListener("submit", function (e) {
+        e.preventDefault(); // Evitar recarga de página
+
+        // Capturar datos del formulario
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+
+        // Mostrar alerta de éxito
+        Swal.fire({
+            title: "¡Registro Exitoso!",
+            html: `El negocio <b>${data.nombreNegocio}</b> ya se registro en la lista de espera.<br><br>
+                   Te agradecemos tu preferencia, pronto tendras acceso a tu plataforma<br>`,
+            icon: "success",
+            confirmButtonText: "Aceptar",
+            timer: 10000,
+            willClose: () => {
+                window.location.href = "index.html";
+            }
+        });
+
+        // Preparar parámetros para EmailJS
+        const templateParams = {
+            NamePropietario: data.nombrePropietario,
+            NombreNegocio: data.nombreNegocio,
+            email: data.email,
+            tel : data.telefono,
+            tipo: data.tipoNegocio,
+            cp: data.codigoPostal,
+            Ubicacion: data.direccion
+        };
+
+        // Enviar correo con EmailJS
+        emailjs.send("service_a2o1ztr", "template_uo6pgsp", templateParams)
+            .then(function(response) {
+                console.log("✅ Correo enviado:", response.status, response.text);
+            }, function(error) {
+                console.error("❌ Error al enviar correo:", error);
+            });
+    });
+});
+</script>
 
   </body>
 </html>

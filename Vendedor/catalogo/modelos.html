@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Modelos</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+
+            :root {
+            --primary: #0a2463;
+            --secondary: #3e92cc;
+            --success: #4cb944;
+            --warning: #ffc857;
+            --danger: #d8315b;
+            --dark: #2e2e2e;
+            --light: #f5f5f5;
+            --gray: #e0e0e0;
+            --text-light: #7a7a7a;
+        }
+     header {
+            background-color: var(--primary);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        header h1 {
+            font-size: 1.8rem;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            margin: 0 0.2rem;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        
+        nav ul li a:hover {
+            background-color: var(--secondary);
+        }
+
+        header>h1{
+            color: var(--light);
+            margin-bottom: 1.5rem;
+        }
+  </style>
+</head>
+<body>
+      <header>
+        <h1>TuInventarioYa</h1>
+        <nav>
+            <ul>
+                <li><a href="Dashboard.php">Dashboard</a></li>
+                <li><a href="CorteCaja.php">Corte Caja</a></li>
+                <li><a href="Inventario.php">Inventario</a></li>
+            </ul>
+        </nav>
+    </header>
+    <br>
+  <div class="container">
+    <h1>Selecciona un Modelo</h1>
+        <a href="index.html" class="btn-back">Volver a Marcas</a>
+    <div id="modelosContainer"></div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const marcaId = params.get("marca_id");
+
+    if (marcaId) {
+      fetch(`app.php?accion=get_modelos&marca_id=${marcaId}`)
+        .then(res => res.json())
+        .then(modelos => {
+          const container = document.getElementById("modelosContainer");
+          if (modelos.length === 0) {
+            container.innerHTML = "<p>No hay modelos disponibles para esta marca.</p>";
+            return;
+          }
+          container.innerHTML = "<h3>Modelos:</h3>";
+          modelos.forEach(modelo => {
+            const div = document.createElement("div");
+            div.className = "modelo";
+            div.innerHTML = `
+              <strong>${modelo.nombre}</strong> (${modelo.anio_inicio}-${modelo.anio_fin}) - ${modelo.motor}
+              <button onclick="irAPiezas(${modelo.id}, ${modelo.marca_id})">Ver Piezas</button>
+            `;
+            container.appendChild(div);
+          });
+        });
+    } else {
+      document.getElementById("modelosContainer").innerHTML = "<p>No se ha seleccionado ninguna marca.</p>";
+    }
+
+    function irAPiezas(modelo_id, marca_id) {
+      location.href = `piezas.html?modelo_id=${modelo_id}&marca_id=${marca_id}`;
+    }
+  </script>
+</body>
+</html>

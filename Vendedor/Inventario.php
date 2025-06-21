@@ -1,150 +1,187 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 session_start();
+include '../include/conn.php';
 
-// Configuración de la base de datos
-$db_host = 'localhost';
-$db_name = 'stockcerca';
-$db_user = 'root';
-$db_pass = '';
-
-// Establecer conexión PDO
-try {
-    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
-    $conn->exec("SET NAMES utf8");
-} catch(PDOException $e) {
-    $_SESSION['error'] = "Error de conexión: " . $e->getMessage();
+$ID_Negocio = intval($_SESSION['idNegocio']);
+if (!$conn) {
+    die(json_encode(['success' => false, 'error' => 'No hay conexión a la base de datos']));
 }
-
-// Procesar acciones
+// Procesar acciones GET (búsquedas)
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action'])) {
-    header('Content-Type: application/json');
-    
     try {
         switch ($_GET['action']) {
             case 'get_products':
-                $stmt = $conn->query("SELECT * FROM producto");
-                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $result = pg_query($conn, "SELECT * FROM producto WHERE idnegocio = $ID_Negocio");
+                if (!$result) throw new Exception(pg_last_error($conn));
+                $products = pg_fetch_all($result);
                 echo json_encode(['success' => true, 'data' => $products ?: []]);
                 break;
-                
             case 'search_products':
                 $term = $_GET['term'] ?? '';
                 $barcode = $_GET['barcode'] ?? '';
-                
                 if (!empty($barcode)) {
-                    $stmt = $conn->prepare("SELECT * FROM producto WHERE CodigoBarras = ?");
-                    $stmt->execute([$barcode]);
-                } else {
-                    $stmt = $conn->prepare("SELECT * FROM producto WHERE 
-                        CodigoBarras LIKE ? OR 
-                        Nombre LIKE ? OR 
-                        CodigoProducto LIKE ? OR
-                        Marca LIKE ?");
+                    // Buscar por código de barras exacto
+                    $query = "SELECT * FROM producto 
+                              WHERE codigobarras = $1 AND idnegocio = $2";
+                    $params = array($barcode, $ID_Negocio);
+                } else if (!empty($term)) {
+                    // Buscar por término en varios campos
                     $searchTerm = "%$term%";
-                    $stmt->execute([$searchTerm, $searchTerm, $searchTerm, $searchTerm]);
+                    $query = "SELECT * FROM producto 
+                              WHERE( codigobarras LIKE $1 OR 
+                                    nombre LIKE $1 OR 
+                                    codigoproducto LIKE $1 OR 
+                                    marca LIKE $1 OR 
+                                    codigoprincipal LIKE $1 OR
+                                    segundocodigo LIKE $1) AND idnegocio = $ID_Negocio";
+                    $params = array($searchTerm);
+                } else {
+                    echo json_encode(['success' => false, 'error' => 'No hay término de búsqueda']);
+                    break;
                 }
-                
-                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $result = pg_query_params($conn, $query, $params);
+                if (!$result) {
+                    throw new Exception("Error en la consulta");
+                }
+                $products = pg_fetch_all($result);
                 echo json_encode(['success' => true, 'data' => $products ?: []]);
                 break;
-                
             default:
                 echo json_encode(['success' => false, 'error' => 'Acción no válida']);
+                break;
         }
-    } catch(PDOException $e) {
-        echo json_encode(['success' => false, 'error' => 'Error de base de datos']);
+    } catch (Exception $e) {
+         json_encode(['success' => false, 'error' => 'Error en la búsqueda']);
     }
-    
     exit();
 }
-
-// Procesar POST (guardar/actualizar/eliminar)
+// Procesar POST: Guardar o actualizar productos
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['products'])) {
-        // Actualización masiva de productos
         try {
-            $conn->beginTransaction();
-            
+            // Iniciar transacción
+            pg_query($conn, "BEGIN");
             foreach ($_POST['products'] as $id => $product) {
-                if (empty($product['Nombre']) || empty($product['Tipo']) || !isset($product['Existencia']) || !isset($product['Precio'])) {
+                // Validación básica
+                if (empty($product['nombre']) || empty($product['tipo']) ||
+                    !isset($product['existencia']) || !isset($product['precio'])) {
                     continue;
                 }
-                
-                $stmt = $conn->prepare("UPDATE producto SET 
-                    Tipo = ?, Nombre = ?, CodigoProducto = ?, CodigoPrincipal = ?, 
-                    Marca = ?, Existencia = ?, Precio = ?, UltimaFecha = NOW()
-                    WHERE id_Producto = ?");
-                
-                $stmt->execute([
-                    $product['Tipo'],
-                    $product['Nombre'],
-                    $product['CodigoProducto'] ?? null,
-                    $product['CodigoPrincipal'] ?? null,
-                    $product['Marca'] ?? null,
-                    $product['Existencia'],
-                    $product['Precio'],
+                // Convertir valores
+                $existencia = intval($product['existencia']);
+                $precio = floatval($product['precio']);
+                // Preparar campos para update
+                $params = array(
+                    $product['tipo'],
+                    $product['nombre'],
+                    $product['codigoproducto'] ?? null,
+                    $product['codigoprincipal'] ?? null,
+                    $product['segundocodigo'] ?? null,
+                    $product['marca'] ?? null,
+                    $existencia,
+                    $precio,
                     $id
-                ]);
+                );
+                // Ejecutar actualización
+                $query = "UPDATE producto SET 
+                            tipo = $1, 
+                            nombre = $2, 
+                            codigoproducto = $3, 
+                            codigoprincipal = $4, 
+                            segundocodigo = $5,
+                            marca = $6, 
+                            existencia = $7, 
+                            precio = $8, 
+                            ultimafecha = NOW() 
+                          WHERE idproducto = $9";
+                $result = pg_query_params($conn, $query, $params);
+                if (!$result) {
+                    // No mostrar errores al usuario, solo continuar
+                    continue;
+                }
             }
-            
-            $conn->commit();
-            $_SESSION['message'] = "Productos actualizados correctamente";
-        } catch(PDOException $e) {
-            $conn->rollBack();
-            $_SESSION['error'] = "Error al actualizar productos: " . $e->getMessage();
+            pg_query($conn, "COMMIT");
+            echo json_encode(['success' => true]);
+            echo'
+                <script>
+                    window.location.href="./Inventario.php";
+                </script>
+            ';
+        } catch (Exception $e) {
+            pg_query($conn, "ROLLBACK");
+            echo json_encode(['success' => false]);
+            echo'
+                <script>
+                    window.location.href="./Inventario.php";
+                </script>
+            ';
         }
-        
-        header("Location: Inventario.php");
+        echo'
+            <script>
+                window.location.href="./Inventario.php";
+            </script>
+        ';
         exit();
     }
-    
     // Guardar nuevo producto individual
     if (isset($_POST['Tipo'])) {
         try {
-            $stmt = $conn->prepare("INSERT INTO producto 
-                (Tipo, Nombre, CodigoBarras, CodigoProducto, CodigoPrincipal, Marca, Existencia, Precio, UltimaFecha) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-                
-            $stmt->execute([
+            // Si el campo CodigoBarras está vacío, usar NULL
+            $codigoBarras = !empty($_POST['CodigoBarras']) ? $_POST['CodigoBarras'] : null;
+            $params = array(
                 $_POST['Tipo'],
                 $_POST['Nombre'],
-                $_POST['CodigoBarras'] ?? null,
+                $codigoBarras, // Aquí puede ser NULL
                 $_POST['CodigoProducto'] ?? null,
                 $_POST['CodigoPrincipal'] ?? null,
+                $_POST['SegundaReferencia'] ?? null,
                 $_POST['Marca'] ?? null,
-                $_POST['Existencia'],
-                $_POST['Precio']
-            ]);
-            
+                intval($_POST['Existencia']),
+                floatval($_POST['Precio']),
+                intval($ID_Negocio)
+            );
+            $query = "INSERT INTO producto 
+                        (tipo, nombre, codigobarras, codigoproducto, codigoprincipal, segundocodigo, marca, existencia, precio, ultimafecha, idnegocio) 
+                      VALUES 
+                        ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10) 
+                      RETURNING idproducto";
+            $result = pg_query_params($conn, $query, $params);
+            if (!$result) {
+                throw new Exception("Error al guardar producto");
+            }
+            $row = pg_fetch_assoc($result);
             echo json_encode([
                 'success' => true,
-                'id_Producto' => $conn->lastInsertId()
+                'idproducto' => $row['idproducto']
             ]);
-        } catch(PDOException $e) {
-            echo json_encode([
-                'success' => false,
-                'error' => 'Error al guardar producto'
-            ]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false]);
         }
-        
         exit();
     }
 }
-
-// Eliminar producto
+// Procesar DELETE: Eliminar producto
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     parse_str(file_get_contents("php://input"), $deleteParams);
     $id = $deleteParams['id'] ?? '';
-    
-    try {
-        $stmt = $conn->prepare("DELETE FROM producto WHERE id_Producto = ?");
-        $stmt->execute([$id]);
-        
-        echo json_encode(['success' => true]);
-    } catch(PDOException $e) {
-        echo json_encode(['success' => false, 'error' => 'Error al eliminar producto']);
+    if (empty($id)) {
+        echo json_encode(['success' => false]);
+        exit();
     }
-    
+    try {
+        $query = "DELETE FROM producto WHERE idproducto = $1";
+        $result = pg_query_params($conn, $query, array($id));
+        if (!$result) {
+            echo json_encode(['success' => false]);
+            exit();
+        }
+        echo json_encode(['success' => true]);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false]);
+    }
     exit();
 }
 ?>
@@ -215,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
 
         section {
             padding: 20px;
-            max-width: 1200px;
+            max-width: 98%;
             margin: 0 auto;
         }
 
@@ -374,7 +411,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                 <li><a href="Dashboard.php">Dashboard</a></li>
                 <li><a href="CorteCaja.php">Corte Caja</a></li>
                 <li><a href="Inventario.php">Inventario</a></li>
-                <li><a href="AgregarProducto.php">Agregar Producto</a></li>
                 <!--<li><a href="Clientes.php">Clientes</a></li>
                 <li><a href="Catalogo.php">Catalogo</a></li>-->
             </ul>
@@ -382,17 +418,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     </header>
     
     <section>
-        <?php if (isset($_SESSION['message'])): ?>
-            <div class="alert alert-success">
-                <?= $_SESSION['message']; unset($_SESSION['message']); ?>
-            </div>
-        <?php endif; ?>
-        
-        <?php if (isset($_SESSION['error'])): ?>
-            <div class="alert alert-error">
-                <?= $_SESSION['error']; unset($_SESSION['error']); ?>
-            </div>
-        <?php endif; ?>
+<?php if (isset($_SESSION['message'])): ?>
+    <div class="alert alert-success"><?= $_SESSION['message']; unset($_SESSION['message']); ?></div>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['error'])): ?>
+    <div class="alert alert-error"><?= $_SESSION['error']; unset($_SESSION['error']); ?></div>
+<?php endif; ?>
         
         <div class="search-container">
             <input type="text" id="searchInput" placeholder="Buscar producto por código o nombre" class="inBus">
@@ -400,10 +432,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
         </div>
         
         <form id="barcodeForm" class="form-bus">
-            <input type="text" id="barcodeInput" placeholder="Escanea o ingresa el código de barras" class="inBus" autofocus>
+            <input type="text" id="barcodeInput" placeholder="Escanea o ingresa el código de barras para agregar producto" class="inBus" autofocus>
         </form>
         
         <form id="productsForm" method="post" action="Inventario.php">
+            <button type="submit" class="btn-guardar">Guardar Cambios</button>
             <table id="productsTable">
                 <thead>
                     <tr>
@@ -412,6 +445,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                         <th>Código Barras</th>
                         <th>Código Producto</th>
                         <th>Código Principal</th>
+                        <th>Otra Referencia</th>
                         <th>Marca</th>
                         <th>Existencia</th>
                         <th>Precio</th>
@@ -423,34 +457,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                 </tbody>
             </table>
             
-            <button type="submit" class="btn-guardar">Guardar Cambios</button>
         </form>
     </section>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const barcodeInput = document.getElementById('barcodeInput');
             const searchInput = document.getElementById('searchInput');
             const searchBtn = document.getElementById('searchBtn');
             const productsTableBody = document.getElementById('productsTableBody');
             const productsForm = document.getElementById('productsForm');
-            
-            // Cargar todos los productos al inicio
+
             loadAllProducts();
-            
-            // Escuchar el evento de búsqueda
+
             searchBtn.addEventListener('click', searchProducts);
             searchInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     searchProducts();
                 }
             });
-            
-            // Escanear código de barras
+
             barcodeInput.addEventListener('keypress', async function(e) {
-                if (e.key === 'Enter' || e.keyCode === 13) {
+                if (e.key === 'Enter') {
                     e.preventDefault();
-                    
                     if (e.target.value.length > 0) {
                         const barcode = e.target.value.trim();
                         await searchProductByBarcode(barcode);
@@ -458,162 +487,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                     }
                 }
             });
-            
-            // Función para cargar todos los productos
-            async function loadAllProducts() {
-                try {
-                    const response = await fetch('Inventario.php?action=get_products');
-                    
-                    if (!response.ok) {
-                        throw new Error(`Error HTTP: ${response.status}`);
-                    }
-                    
-                    const result = await response.json();
-                    
-                    if (!result.success) {
-                        throw new Error(result.error || 'Error al cargar productos');
-                    }
-                    
-                    renderProducts(result.data);
-                } catch (error) {
-                    console.error('Error al cargar productos:', error);
-                    alert('Error al cargar productos: ' + error.message);
-                    productsTableBody.innerHTML = '<tr><td colspan="9">Error al cargar productos</td></tr>';
-                }
-            }
-            
-            // Función para buscar productos
+
+async function loadAllProducts() {
+    try {
+        const response = await fetch('Inventario.php?action=get_products');
+        const text = await response.text(); // Recibe como texto plano
+        console.log("Respuesta sin parsear:", text); // Mira esto en consola
+        const result = JSON.parse(text); // Ahora intenta parsear
+        if (!result.success) throw new Error(result.error || 'Error al cargar productos');
+        renderProducts(result.data);
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al cargar productos');
+        productsTableBody.innerHTML = '<tr><td colspan="10">Error al cargar productos</td></tr>';
+    }
+}
             async function searchProducts() {
                 const searchTerm = searchInput.value.trim();
-                
-                if (searchTerm.length === 0) {
-                    loadAllProducts();
-                    return;
-                }
-                
+                if (searchTerm.length === 0) return loadAllProducts();
                 try {
                     const response = await fetch(`Inventario.php?action=search_products&term=${encodeURIComponent(searchTerm)}`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`Error HTTP: ${response.status}`);
-                    }
-                    
                     const result = await response.json();
-                    
-                    if (!result.success) {
-                        throw new Error(result.error || 'Error al buscar productos');
-                    }
-                    
+                    if (!result.success) throw new Error(result.error || 'Error al buscar productos');
                     renderProducts(result.data);
                 } catch (error) {
-                    console.error('Error al buscar productos:', error);
-                    alert('Error al buscar productos: ' + error.message);
+                    console.error('Error:', error);
+                    alert('Error al buscar productos');
                 }
             }
-            
-            // Función para buscar por código de barras
+
             async function searchProductByBarcode(barcode) {
                 try {
                     const response = await fetch(`Inventario.php?action=search_products&barcode=${encodeURIComponent(barcode)}`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`Error HTTP: ${response.status}`);
-                    }
-                    
                     const result = await response.json();
-                    
-                    if (!result.success) {
-                        throw new Error(result.error || 'Error al buscar producto');
-                    }
-                    
+                    if (!result.success) throw new Error(result.error || 'Error al buscar producto');
                     if (result.data.length > 0) {
                         renderProducts(result.data);
                     } else {
-                        // Si no existe, agregar como nuevo producto
                         addProductRow({
-                            id_Producto: '',
-                            Tipo: '',
-                            Nombre: '',
-                            CodigoBarras: barcode,
-                            CodigoProducto: '',
-                            CodigoPrincipal: '',
-                            Marca: '',
-                            Existencia: 1,
-                            Precio: 0
+                            idproducto: '',
+                            tipo: '',
+                            nombre: '',
+                            codigobarras: barcode,
+                            codigoproducto: '',
+                            codigoprincipal: '',
+                            segundocodigo: '',
+                            marca: '',
+                            existencia: 1,
+                            precio: 0
                         }, false);
                     }
                 } catch (error) {
-                    console.error('Error al buscar producto:', error);
-                    alert('Error al buscar producto: ' + error.message);
+                    console.error('Error:', error);
+                    alert('Error al buscar producto');
                 }
             }
-            
-            // Función para renderizar productos
+
             function renderProducts(products) {
                 productsTableBody.innerHTML = '';
-                
                 if (products.length === 0) {
-                    productsTableBody.innerHTML = '<tr><td colspan="9">No se encontraron productos</td></tr>';
+                    productsTableBody.innerHTML = '<tr><td colspan="10">No se encontraron productos</td></tr>';
                     return;
                 }
-                
                 products.forEach(product => {
                     addProductRow(product, true);
                 });
             }
-            
-            // Función para agregar una fila de producto
+
             function addProductRow(product, isExisting) {
                 const row = document.createElement('tr');
                 row.className = 'product-row';
-                row.dataset.productId = product.id_Producto || 'new_' + Date.now();
-                
+                row.dataset.productId = product.idproducto || 'new_' + Date.now();
                 row.innerHTML = `
                     <td>
-                        <select name="products[${row.dataset.productId}][Tipo]" required>
+                        <select name="products[${row.dataset.productId}][tipo]" required>
                             <option value="">Seleccione...</option>
-                            <option value="Producto" ${product.Tipo === 'Producto' ? 'selected' : ''}>Producto</option>
-                            <option value="Servicio" ${product.Tipo === 'Servicio' ? 'selected' : ''}>Servicio</option>
-                            <option value="Repuesto" ${product.Tipo === 'Repuesto' ? 'selected' : ''}>Repuesto</option>
+                            <option value="Producto" ${['Producto', 'producto', 'PRODUCTO'].includes(product.tipo || '') ? 'selected' : ''}>Producto</option>
+                            <option value="Servicio" ${['Servicio', 'servicio', 'SERVICIO'].includes(product.tipo || '') ? 'selected' : ''}>Servicio</option>
+                            <option value="Repuesto" ${['Repuesto', 'repuesto', 'REPUESTO'].includes(product.tipo || '') ? 'selected' : ''}>Repuesto</option>
                         </select>
-                        <input type="hidden" name="products[${row.dataset.productId}][id_Producto]" value="${product.id_Producto || ''}">
+                        <input type="hidden" name="products[${row.dataset.productId}][idproducto]" value="${product.idproducto || ''}">
                     </td>
-                    <td><input type="text" name="products[${row.dataset.productId}][Nombre]" value="${product.Nombre || ''}" required></td>
-                    <td><input type="text" name="products[${row.dataset.productId}][CodigoBarras]" value="${product.CodigoBarras || ''}" ${isExisting ? 'readonly' : ''}></td>
-                    <td><input type="text" name="products[${row.dataset.productId}][CodigoProducto]" value="${product.CodigoProducto || ''}"></td>
-                    <td><input type="text" name="products[${row.dataset.productId}][CodigoPrincipal]" value="${product.CodigoPrincipal || ''}"></td>
-                    <td><input type="text" name="products[${row.dataset.productId}][Marca]" value="${product.Marca || ''}"></td>
-                    <td><input type="number" name="products[${row.dataset.productId}][Existencia]" value="${product.Existencia || 1}" required min="0"></td>
-                    <td><input type="number" step="0.01" name="products[${row.dataset.productId}][Precio]" value="${product.Precio || 0}" required min="0"></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][nombre]" value="${product.nombre || ''}" required></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][codigobarras]" value="${product.codigobarras || ''}" ${isExisting ? 'readonly' : ''}></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][codigoproducto]" value="${product.codigoproducto || ''}"></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][codigoprincipal]" value="${product.codigoprincipal || ''}"></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][segundocodigo]" value="${product.segundocodigo || ''}"></td>
+                    <td><input type="text" name="products[${row.dataset.productId}][marca]" value="${product.marca || ''}"></td>
+                    <td><input type="number" name="products[${row.dataset.productId}][existencia]" value="${product.existencia || 1}" required min="0"></td>
+                    <td><input type="number" step="0.01" name="products[${row.dataset.productId}][precio]" value="${product.precio || 0}" required min="0"></td>
                     <td>
                         ${isExisting ? 
-                            `<button type="button" class="btn-eliminar" onclick="deleteProduct('${product.id_Producto}', this)">Eliminar</button>` : 
+                            `<button type="button" class="btn-eliminar" onclick="deleteProduct('${product.idproducto}', this)">Eliminar</button>` : 
                             `<button type="button" class="btn-actualizar" onclick="saveNewProduct(this)">Guardar</button>`
                         }
                     </td>
                 `;
-                
-                productsTableBody.appendChild(row);
+                productsTableBody.prepend(row);
             }
-            
-            // Función global para eliminar productos
+
             window.deleteProduct = async function(productId, button) {
                 if (confirm('¿Estás seguro de eliminar este producto?')) {
                     try {
                         const response = await fetch('Inventario.php', {
                             method: 'DELETE',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                             body: `id=${productId}`
                         });
-                        
-                        if (!response.ok) {
-                            throw new Error(`Error HTTP: ${response.status}`);
-                        }
-                        
                         const result = await response.json();
-                        
                         if (result.success) {
                             button.closest('tr').remove();
                             alert('Producto eliminado correctamente');
@@ -621,52 +602,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
                             throw new Error(result.error || 'Error al eliminar el producto');
                         }
                     } catch (error) {
-                        console.error('Error al eliminar producto:', error);
-                        alert('Error al eliminar el producto: ' + error.message);
+                        console.error('Error:', error);
+                        alert('Error al eliminar el producto');
                     }
                 }
             };
-            
-            // Función global para guardar nuevos productos
+
             window.saveNewProduct = async function(button) {
                 const row = button.closest('tr');
                 const formData = new FormData();
-                
-                // Recopilar datos del formulario
-                formData.append('Tipo', row.querySelector('[name*="[Tipo]"]').value);
-                formData.append('Nombre', row.querySelector('[name*="[Nombre]"]').value);
-                formData.append('CodigoBarras', row.querySelector('[name*="[CodigoBarras]"]').value);
-                formData.append('CodigoProducto', row.querySelector('[name*="[CodigoProducto]"]').value);
-                formData.append('CodigoPrincipal', row.querySelector('[name*="[CodigoPrincipal]"]').value);
-                formData.append('Marca', row.querySelector('[name*="[Marca]"]').value);
-                formData.append('Existencia', row.querySelector('[name*="[Existencia]"]').value);
-                formData.append('Precio', row.querySelector('[name*="[Precio]"]').value);
-                
+                const getInputValue = (name) => {
+                    const input = row.querySelector(`input[name*="[${name}]"], select[name*="[${name}]"]`);
+                    return input ? input.value.trim() : '';
+                };
+                formData.append('Tipo', getInputValue('tipo'));
+                formData.append('Nombre', getInputValue('nombre'));
+                formData.append('CodigoBarras', getInputValue('codigobarras'));
+                formData.append('CodigoProducto', getInputValue('codigoproducto'));
+                formData.append('CodigoPrincipal', getInputValue('codigoprincipal'));
+                formData.append('SegundaReferencia', getInputValue('segundocodigo'));
+                formData.append('Marca', getInputValue('marca'));
+                formData.append('Existencia', getInputValue('existencia'));
+                formData.append('Precio', getInputValue('precio'));
+
                 try {
-                    const response = await fetch('Inventario.php', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`Error HTTP: ${response.status}`);
-                    }
-                    
+                    const response = await fetch('Inventario.php', { method: 'POST', body: formData });
                     const result = await response.json();
-                    
                     if (result.success) {
                         alert('Producto guardado correctamente');
-                        // Actualizar la fila con el ID real del producto
-                        row.dataset.productId = result.id_Producto;
-                        row.querySelector('[name*="[id_Producto]"]').value = result.id_Producto;
-                        // Cambiar el botón a "Eliminar"
-                        button.outerHTML = `<button type="button" class="btn-eliminar" onclick="deleteProduct('${result.id_Producto}', this)">Eliminar</button>`;
+                        const hiddenInput = row.querySelector('input[name*="[idproducto]"]');
+                        if (hiddenInput) hiddenInput.value = result.idproducto;
+                        button.outerHTML = `<button type="button" class="btn-eliminar" onclick="deleteProduct('${result.idproducto}', this)">Eliminar</button>`;
                     } else {
                         throw new Error(result.error || 'Error al guardar el producto');
                     }
                 } catch (error) {
-                    console.error('Error al guardar producto:', error);
-                    alert('Error al guardar el producto: ' + error.message);
+                    console.error('Error:', error);
+                    alert('Error al guardar el producto');
                 }
             };
         });

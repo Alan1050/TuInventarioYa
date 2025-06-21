@@ -1,53 +1,58 @@
 <?php
-
 session_start();
+$IDNegocio = intval($_SESSION['idNegocio']);
 
-$IDNegocio = $_SESSION['idNegocio'];
+// Incluir conexión
+include_once "../include/conn.php";
 
-// Conexión a la base de datos (ajusta según tu configuración)
-$conexion = new mysqli("localhost", "root", "", "stockcerca");
-
-// Verificar conexión
-if ($conexion->connect_error) {
-    die("Error de conexión: " . $conexion->connect_error);
-}
-
-// Obtener fecha actual para el corte
+// Obtener fecha actual para el corte (ayer)
 $fecha_actual = date('Y-m-d', strtotime('-1 day'));
 
 // Consulta para obtener total de ventas del día
-$query_ventas_dia = "SELECT SUM(PrecioFinal) as total FROM ventas WHERE Fecha = '$fecha_actual' AND id_Negocio = '$IDNegocio'";
-$result_ventas_dia = $conexion->query($query_ventas_dia);
-$total_ventas = $result_ventas_dia->fetch_assoc()['total'] ?? 0;
+$query_ventas_dia = "SELECT SUM(preciofinal) as total FROM ventas WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'";
+$result_ventas_dia = pg_query($conn, $query_ventas_dia);
+$total_ventas = 0;
+if ($row = pg_fetch_assoc($result_ventas_dia)) {
+    $total_ventas = $row['total'] ?? 0;
+}
 
 // Consulta para producto más vendido del día
-$query_producto_mas_vendido = "SELECT Descripcion, SUM(Cantidades) as total_vendido 
+$query_producto_mas_vendido = "SELECT descripcion, SUM(cantidades) as totalvendido 
                               FROM ventas 
-                              WHERE Fecha = '$fecha_actual' AND id_Negocio = '$IDNegocio'
-                              GROUP BY Descripcion 
-                              ORDER BY total_vendido DESC 
+                              WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'
+                              GROUP BY descripcion
+                              ORDER BY totalvendido DESC
                               LIMIT 1";
-$result_producto = $conexion->query($query_producto_mas_vendido);
-$producto_mas_vendido = $result_producto->fetch_assoc();
+
+$result_producto = pg_query($conn, $query_producto_mas_vendido);
+if (!$result_producto) {
+    die("Error en consulta producto más vendido: " . pg_last_error($conn));
+}
+$producto_mas_vendido = pg_fetch_assoc($result_producto);
 
 // Consulta para vendedor con más ventas del día
-$query_vendedor_top = "SELECT ClaveTrabajador, SUM(PrecioFinal) as total_ventas 
+$query_vendedor_top = "SELECT clavetrabajador, SUM(preciofinal) as total_ventas 
                        FROM ventas 
-                       WHERE Fecha = '$fecha_actual' AND id_Negocio = '$IDNegocio'
-                       GROUP BY ClaveTrabajador 
+                       WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'
+                       GROUP BY clavetrabajador 
                        ORDER BY total_ventas DESC 
                        LIMIT 1";
-$result_vendedor = $conexion->query($query_vendedor_top);
-$vendedor_top = $result_vendedor->fetch_assoc();
-?>
+$result_vendedor = pg_query($conn, $query_vendedor_top);
+$vendedor_top = pg_fetch_assoc($result_vendedor);
 
+// Detalle de ventas
+$query_detalle = "SELECT folio, descripcion, preciosu, cantidades, preciofinal, clavetrabajador 
+                  FROM ventas 
+                  WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'
+                  ORDER BY folio";
+$result_detalle = pg_query($conn, $query_detalle);
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corte de Caja - TuInventarioYa</title>
-    <style>
+     <style>
         :root {
           --primary: #0a2463;
           --secondary: #3e92cc;
@@ -195,56 +200,116 @@ $vendedor_top = $result_vendedor->fetch_assoc();
                 <li><a href="Dashboard.php">Dashboard</a></li>
                 <li><a href="CorteCaja.php">Corte Caja</a></li>
                 <li><a href="Inventario.php">Inventario</a></li>
-                <li><a href="AgregarProducto.php">Agregar Producto</a></li>
-                <!--<li><a href="Clientes.php">Clientes</a></li>
-                <li><a href="Catalogo.php">Catalogo</a></li>-->
             </ul>
         </nav>
     </header>
     
+<!-- Modal con scroll vertical -->
+<div id="modalProductosAgotarse" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); z-index:9999;">
+    <!-- Contenido del modal con scroll -->
+    <div style="
+        background-color:white;
+        margin:5% auto;
+        padding:2rem;
+        border-radius:8px;
+        width:90%;
+        max-width:800px;
+        max-height:80vh; /* Máximo 80% de la altura de la pantalla */
+        overflow-y:auto; /* Habilita scroll si el contenido es muy largo */
+        box-shadow:0 4px 10px rgba(0,0,0,0.2);">
+        
+        <!-- Botón cerrar -->
+        <span 
+            onclick="document.getElementById('modalProductosAgotarse').style.display='none'" 
+            style="float:right; cursor:pointer; font-size:1.5rem;">&times;</span>
+        
+        <!-- Título -->
+        <h2>Productos por Agotarse (Existencia menor a 3)</h2>
+        
+        <!-- Tabla de productos -->
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="background-color:#f0f0f0;">
+                    <th style="padding:10px; text-align:left;">Código</th>
+                    <th style="padding:10px; text-align:left;">Producto</th>
+                    <th style="padding:10px; text-align:center;">Existencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                // Consulta para obtener productos vendidos del día
+                $query_codigos_vendidos = "SELECT DISTINCT codigosbarras FROM ventas WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'";
+                $result_codigos_vendidos = pg_query($conn, $query_codigos_vendidos);
+
+                if ($result_codigos_vendidos && pg_num_rows($result_codigos_vendidos) > 0) {
+                    while ($row_codigo = pg_fetch_assoc($result_codigos_vendidos)) {
+                        $codigo = $row_codigo['codigosbarras'];
+
+                        // Consultar existencia actual en inventario
+                        $query_existencia = "SELECT nombre, existencia FROM producto WHERE codigobarras = '$codigo' AND idnegocio = '$IDNegocio'";
+                        $result_existencia = pg_query($conn, $query_existencia);
+                        if ($result_existencia && pg_num_rows($result_existencia) > 0) {
+                            $row_existencia = pg_fetch_assoc($result_existencia);
+                            if ($row_existencia['existencia'] <= 3) {
+                                echo "<tr style='border-bottom:1px solid #ddd;'>";
+                                echo "<td style='padding:8px;'>$codigo</td>";
+                                echo "<td style='padding:8px;'>" . htmlspecialchars($row_existencia['nombre']) . "</td>";
+                                echo "<td style='padding:8px; text-align:center; color:" . ($row_existencia['existencia'] == 0 ? "red" : "orange") . ";'>"
+                                    . $row_existencia['existencia'] . "</td>";
+                                echo "</tr>";
+                            }
+                        }
+                    }
+                } else {
+                    echo "<tr><td colspan='3' style='text-align:center; padding:10px;'>No hay productos vendidos hoy</td></tr>";
+                }
+                ?>
+            </tbody>
+        </table>
+        
+        <!-- Botón Cerrar -->
+        <br>
+        <button class="btn" onclick="document.getElementById('modalProductosAgotarse').style.display='none'">Cerrar</button>
+    </div>
+</div>
 
     <?php
-        $fecha_actual2 = date('d-m-Y', strtotime('-1 day'));
-        $Fecha = str_replace("-", "/", $fecha_actual2);
+    $fecha_actual2 = date('d-m-Y', strtotime('-1 day'));
+    $Fecha = str_replace("-", "/", $fecha_actual2);
     ?>
-
+    
     <div class="container">
         <div class="card">
             <h2>Corte de Caja - <?php echo $Fecha; ?></h2>
-            
             <div class="info-grid">
                 <div class="info-box">
                     <h3>Total de Ventas del Día</h3>
                     <p class="highlight">$<?php echo number_format($total_ventas, 2); ?></p>
                 </div>
-                
                 <div class="info-box">
                     <h3>Producto Más Vendido</h3>
                     <?php if ($producto_mas_vendido): ?>
-                        <p><?php echo htmlspecialchars($producto_mas_vendido['Descripcion']); ?></p>
-                        <p class="highlight"><?php echo $producto_mas_vendido['total_vendido']; ?> unidades</p>
+                        <p><?php echo htmlspecialchars($producto_mas_vendido['descripcion']); ?></p>
+                        <p class="highlight"><?php echo $producto_mas_vendido['totalvendido']; ?> unidades</p>
                     <?php else: ?>
                         <p>No hay ventas registradas hoy</p>
                     <?php endif; ?>
                 </div>
-                
                 <div class="info-box">
                     <h3>Vendedor Destacado</h3>
                     <?php if ($vendedor_top): ?>
-                        <p>Vendedor: <?php echo htmlspecialchars($vendedor_top['ClaveTrabajador']); ?></p>
+                        <p>Vendedor: <?php echo htmlspecialchars($vendedor_top['clavetrabajador']); ?></p>
                         <p class="highlight">$<?php echo number_format($vendedor_top['total_ventas'], 2); ?></p>
                     <?php else: ?>
                         <p>No hay ventas registradas hoy</p>
                     <?php endif; ?>
                 </div>
             </div>
-            
             <div class="text-center mt-3">
                 <button class="btn btn-print" onclick="window.print()">Imprimir Corte</button>
-                <a href="Dashboard.php" class="btn">Volver al Dashboard</a>
+                <button class="btn" onclick="document.getElementById('modalProductosAgotarse').style.display='block'">Ver productos por agotarse de hoy</button>
             </div>
         </div>
-        
         <div class="card">
             <h2>Detalle de Ventas del Día</h2>
             <table style="width: 100%; border-collapse: collapse;">
@@ -260,21 +325,15 @@ $vendedor_top = $result_vendedor->fetch_assoc();
                 </thead>
                 <tbody>
                     <?php
-                    $query_detalle = "SELECT Folio, Descripcion, PreciosU, Cantidades, PrecioFinal, ClaveTrabajador 
-                                      FROM ventas 
-                                      WHERE Fecha = '$fecha_actual' 
-                                      ORDER BY Folio";
-                    $result_detalle = $conexion->query($query_detalle);
-                    
-                    if ($result_detalle->num_rows > 0) {
-                        while($row = $result_detalle->fetch_assoc()) {
+                    if (pg_num_rows($result_detalle) > 0) {
+                        while($row = pg_fetch_assoc($result_detalle)) {
                             echo "<tr style='border-bottom: 1px solid var(--gray);'>";
-                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['Folio']) . "</td>";
-                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['Descripcion']) . "</td>";
-                            echo "<td style='padding: 10px; text-align: right;'>$" . number_format($row['PreciosU'], 2) . "</td>";
-                            echo "<td style='padding: 10px; text-align: center;'>" . $row['Cantidades'] . "</td>";
-                            echo "<td style='padding: 10px; text-align: right;'>$" . number_format($row['PrecioFinal'], 2) . "</td>";
-                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['ClaveTrabajador']) . "</td>";
+                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['folio']) . "</td>";
+                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['descripcion']) . "</td>";
+                            echo "<td style='padding: 10px; text-align: right;'>$" . number_format($row['preciosu'], 2) . "</td>";
+                            echo "<td style='padding: 10px; text-align: center;'>" . $row['cantidades'] . "</td>";
+                            echo "<td style='padding: 10px; text-align: right;'>$" . number_format($row['preciofinal'], 2) . "</td>";
+                            echo "<td style='padding: 10px;'>" . htmlspecialchars($row['clavetrabajador']) . "</td>";
                             echo "</tr>";
                         }
                     } else {
@@ -287,6 +346,3 @@ $vendedor_top = $result_vendedor->fetch_assoc();
     </div>
 </body>
 </html>
-<?php
-$conexion->close();
-?>

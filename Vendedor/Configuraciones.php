@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $empleados = [];
 
 try {
-    $queryEmpleados = "SELECT idvendedor, nombre, apepaterno, apematerno, numtelefono, email, clave 
+    $queryEmpleados = "SELECT idvendedor, nombre, apepaterno, apematerno, numtelefono, email, clave, rol 
                        FROM vendedor 
                        WHERE idnegocio = $1 AND rol != 'Administrador'";
     $resultEmpleados = pg_query_params($conn, $queryEmpleados, array($idNegocio));
@@ -494,7 +494,6 @@ try {
                 <li><a href="Dashboard.php">Dashboard</a></li>
                 <li><a href="CorteCaja.php">Corte Caja</a></li>
                 <li><a href="Inventario.php">Inventario</a></li>
-                <li><a href="AgregarProducto.php">Agregar Producto</a></li>
                 <!--<li><a href="Clientes.php">Clientes</a></li>
                 <li><a href="Catalogo.php">Catalogo</a></li>-->
             </ul>
@@ -620,14 +619,13 @@ try {
     <div class="trabajadores-grid" id="empleadosList">
         <?php if (!empty($empleados)): ?>
             <?php foreach ($empleados as $empleado): ?>
-                <div class="Trabajador" data-id="<?= htmlspecialchars($empleado['id_vendedor']) ?>">
-                    <img src="" alt="Foto del trabajador">
+                <div class="Trabajador" data-id="<?= htmlspecialchars($empleado['idvendedor']) ?>">
                     <h2><?= htmlspecialchars($empleado['nombre'] . ' ' . $empleado['apepaterno'] . ' ' . $empleado['apematerno']) ?></h2>
                     <p><strong>Cargo:</strong> <?= htmlspecialchars($empleado['rol']) ?></p>
                     <p><strong>Teléfono:</strong> <?= htmlspecialchars($empleado['numtelefono']) ?></p>
                     <p><strong>Email:</strong> <?= htmlspecialchars($empleado['email']) ?></p>
                     <p><strong>Clave:</strong> <?= htmlspecialchars($empleado['clave']) ?></p>
-                    <button onclick="eliminarEmpleado(<?= $empleado['id_vendedor'] ?>)" style="background-color: var(--danger); color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer;">
+                    <button onclick="eliminarEmpleado(<?= $empleado['idvendedor'] ?>)" style="background-color: var(--danger); color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer;">
                         Eliminar
                     </button>
                 </div>
@@ -649,7 +647,7 @@ try {
             <div id="yes">
                 <h1>Suscripción</h1>
                 <p>Ya formas parte de nuestra comunidad premium</p>
-                <p><strong>Tu suscripción se agota el:</strong> <?php $Fecha = str_replace("-", "/", $DatosArrarNegocio['FinSuscripcion']);
+                <p><strong>Tu suscripción se agota el:</strong> <?php $Fecha = str_replace("-", "/", $DatosArrarNegocio['finsuscripcion']);
                                                                 print_r($Fecha); ?></p>
             </div>
         </section>

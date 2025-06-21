@@ -15,7 +15,7 @@ $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL) ? pg_escape_string($
 $rol = 'Empleado'; // Rol por defecto
 
     $primerNombre = isset($nombre[0]) ? $nombre[0] : '';
-    $segundoNombre = isset($nombre[1]) ? $nombre[1] : '';
+    $segundoNombre = isset($nombre[0]) ? $nombre[1] : '';
 
         $inicialPrimerNombre = !empty($primerNombre) ? strtoupper(substr($primerNombre, 0, 1)) : '';
     $inicialSegundoNombre = !empty($segundoNombre) ? strtoupper(substr($segundoNombre, 0, 1)) : '';
@@ -31,14 +31,18 @@ $rol = 'Empleado'; // Rol por defecto
     $Pass = $primerNombre . $codigo . $segundoNombre;
 
 $query = "INSERT INTO vendedor 
-    (nombre, apepaterno, apematerno, numtelefono, email, clave, rol, idnegocio)
+    (nombre, apepaterno, apematerno, numtelefono, email, clave, rol, idnegocio, pass)
     VALUES 
-    ('$nombre', '$apepaterno', '$apematerno', '$numtelefono', " . ($email ? "'$email'" : "NULL") . ", '$clave', '$rol', $id_negocio)";
+    ('$nombre', '$apepaterno', '$apematerno', '$numtelefono', " . ($email ? "'$email'" : "NULL") . ", '$clave', '$rol', $id_negocio, '$Pass')";
     
 $result = pg_query($conn, $query);
 
 if ($result) {
-
+    echo '<script>
+        window.location.href="./Configuraciones.php";
+    </script>';
 } else {
-   
+       echo '<script>
+        window.location.href="./Configuraciones.php";
+    </script>';
 }

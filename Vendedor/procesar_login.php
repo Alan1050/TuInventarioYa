@@ -2,7 +2,7 @@
 
 session_start();
 
-include 'https://tu-inventario-ya.vercel.app/include/conn.php'; // Asegúrate de que $conn es una conexión válida a PostgreSQL
+include '../include/conn.php'; // Asegúrate de que $conn es una conexión válida a PostgreSQL
 
 if (!isset($_POST['clave']) || !isset($_POST['contrasena'])) {
     die("Faltan datos de inicio de sesión.");
