@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             pg_query($conn, "COMMIT");
-            echo json_encode(['success' => true]);
+            json_encode(['success' => true]);
             echo'
                 <script>
                     window.location.href="./Inventario.php";
@@ -127,41 +127,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     // Guardar nuevo producto individual
-    if (isset($_POST['Tipo'])) {
-        try {
-            // Si el campo CodigoBarras está vacío, usar NULL
-            $codigoBarras = !empty($_POST['CodigoBarras']) ? $_POST['CodigoBarras'] : null;
-            $params = array(
-                $_POST['Tipo'],
-                $_POST['Nombre'],
-                $codigoBarras, // Aquí puede ser NULL
-                $_POST['CodigoProducto'] ?? null,
-                $_POST['CodigoPrincipal'] ?? null,
-                $_POST['SegundaReferencia'] ?? null,
-                $_POST['Marca'] ?? null,
-                intval($_POST['Existencia']),
-                floatval($_POST['Precio']),
-                intval($ID_Negocio)
-            );
-            $query = "INSERT INTO producto 
-                        (tipo, nombre, codigobarras, codigoproducto, codigoprincipal, segundocodigo, marca, existencia, precio, ultimafecha, idnegocio) 
-                      VALUES 
-                        ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10) 
-                      RETURNING idproducto";
-            $result = pg_query_params($conn, $query, $params);
-            if (!$result) {
-                throw new Exception("Error al guardar producto");
-            }
-            $row = pg_fetch_assoc($result);
-            echo json_encode([
-                'success' => true,
-                'idproducto' => $row['idproducto']
-            ]);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false]);
+// Guardar nuevo producto individual
+if (isset($_POST['Tipo'])) {
+    try {
+        // Validación de campos obligatorios
+        if (empty($_POST['Nombre']) || !isset($_POST['Existencia']) || !isset($_POST['Precio'])) {
+            throw new Exception("Faltan campos obligatorios");
         }
-        exit();
+
+        $codigoBarras = !empty($_POST['CodigoBarras']) ? $_POST['CodigoBarras'] : null;
+        $params = array(
+            $_POST['Tipo'],
+            $_POST['Nombre'],
+            $codigoBarras,
+            $_POST['CodigoProducto'] ?? null,
+            $_POST['CodigoPrincipal'] ?? null,
+            $_POST['SegundaReferencia'] ?? null,
+            $_POST['Marca'] ?? null,
+            intval($_POST['Existencia']),
+            floatval($_POST['Precio']),
+            intval($ID_Negocio)
+        );
+
+        // Consulta INSERT con RETURNING para obtener el ID generado
+        $query = "INSERT INTO producto 
+                    (tipo, nombre, codigobarras, codigoproducto, codigoprincipal, segundocodigo, marca, existencia, precio, ultimafecha, idnegocio) 
+                  VALUES 
+                    ($1, $2, $3, \$4, $5, $6, $7, $8, $9, NOW(), $10) 
+                  RETURNING idproducto";
+
+        $result = pg_query_params($conn, $query, $params);
+
+        if (!$result) {
+            throw new Exception("Error al ejecutar la consulta: " . pg_last_error($conn));
+        }
+
+        $row = pg_fetch_assoc($result);
+        echo json_encode([
+            'success' => true,
+            'idproducto' => $row['idproducto']
+        ]);
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
     }
+    exit();
+}
 }
 // Procesar DELETE: Eliminar producto
 if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
@@ -418,13 +431,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     </header>
     
     <section>
-<?php if (isset($_SESSION['message'])): ?>
-    <div class="alert alert-success"><?= $_SESSION['message']; unset($_SESSION['message']); ?></div>
-<?php endif; ?>
-
-<?php if (isset($_SESSION['error'])): ?>
-    <div class="alert alert-error"><?= $_SESSION['error']; unset($_SESSION['error']); ?></div>
-<?php endif; ?>
         
         <div class="search-container">
             <input type="text" id="searchInput" placeholder="Buscar producto por código o nombre" class="inBus">
@@ -608,39 +614,56 @@ async function loadAllProducts() {
                 }
             };
 
-            window.saveNewProduct = async function(button) {
-                const row = button.closest('tr');
-                const formData = new FormData();
-                const getInputValue = (name) => {
-                    const input = row.querySelector(`input[name*="[${name}]"], select[name*="[${name}]"]`);
-                    return input ? input.value.trim() : '';
-                };
-                formData.append('Tipo', getInputValue('tipo'));
-                formData.append('Nombre', getInputValue('nombre'));
-                formData.append('CodigoBarras', getInputValue('codigobarras'));
-                formData.append('CodigoProducto', getInputValue('codigoproducto'));
-                formData.append('CodigoPrincipal', getInputValue('codigoprincipal'));
-                formData.append('SegundaReferencia', getInputValue('segundocodigo'));
-                formData.append('Marca', getInputValue('marca'));
-                formData.append('Existencia', getInputValue('existencia'));
-                formData.append('Precio', getInputValue('precio'));
+window.saveNewProduct = async function(button) {
+    const row = button.closest('tr');
+    const formData = new FormData();
+    
+    const getInputValue = (name) => {
+        const input = row.querySelector(`input[name*="[${name}]"], select[name*="[${name}]"]`);
+        return input ? input.value.trim() : '';
+    };
 
-                try {
-                    const response = await fetch('Inventario.php', { method: 'POST', body: formData });
-                    const result = await response.json();
-                    if (result.success) {
-                        alert('Producto guardado correctamente');
-                        const hiddenInput = row.querySelector('input[name*="[idproducto]"]');
-                        if (hiddenInput) hiddenInput.value = result.idproducto;
-                        button.outerHTML = `<button type="button" class="btn-eliminar" onclick="deleteProduct('${result.idproducto}', this)">Eliminar</button>`;
-                    } else {
-                        throw new Error(result.error || 'Error al guardar el producto');
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error al guardar el producto');
-                }
-            };
+    formData.append('Tipo', getInputValue('tipo'));
+    formData.append('Nombre', getInputValue('nombre'));
+    formData.append('CodigoBarras', getInputValue('codigobarras'));
+    formData.append('CodigoProducto', getInputValue('codigoproducto'));
+    formData.append('CodigoPrincipal', getInputValue('codigoprincipal'));
+    formData.append('SegundaReferencia', getInputValue('segundocodigo'));
+    formData.append('Marca', getInputValue('marca'));
+    formData.append('Existencia', getInputValue('existencia'));
+    formData.append('Precio', getInputValue('precio'));
+
+    try {
+        const response = await fetch('Inventario.php', { method: 'POST', body: formData });
+
+        // Solo leemos el cuerpo UNA VEZ
+        const text = await response.text(); // Primera y única lectura
+
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (jsonError) {
+            console.error("Texto de respuesta:", text); // Verifica qué recibiste
+            throw new Error("La respuesta no es JSON válido");
+        }
+
+        if (result.success) {
+            alert('Producto guardado correctamente');
+            const hiddenInput = row.querySelector('input[name*="[idproducto]"]');
+            if (hiddenInput) hiddenInput.value = result.idproducto;
+            button.outerHTML = `
+                <button type="button" class="btn-eliminar" onclick="deleteProduct('${result.idproducto}', this)">
+                    Eliminar
+                </button>
+            `;
+        } else {
+            throw new Error(result.error || 'Error al guardar el producto');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al guardar el producto. Revisa la consola para más detalles.');
+    }
+};
         });
     </script>
 </body>

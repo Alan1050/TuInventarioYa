@@ -6,7 +6,7 @@ $IDNegocio = intval($_SESSION['idNegocio']);
 include_once "../include/conn.php";
 
 // Obtener fecha actual para el corte (ayer)
-$fecha_actual = date('Y-m-d', strtotime('-1 day'));
+$fecha_actual = date('Y-m-d',strtotime('-1 day'));
 
 // Consulta para obtener total de ventas del día
 $query_ventas_dia = "SELECT SUM(preciofinal) as total FROM ventas WHERE fecha = '$fecha_actual' AND idnegocio = '$IDNegocio'";

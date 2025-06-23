@@ -8,7 +8,7 @@ if (!$conn) {
 
 // Procesar búsqueda de productos
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['search_term'])) {
-    $searchTerm = $_POST['search_term'];
+    $searchTerm = strtoupper($_POST['search_term']);
     // Verificar que idNegocio exista en sesión
     if (!isset($_SESSION['idNegocio'])) {
         echo json_encode(['success' => false, 'error' => 'No se encontró el negocio']);
@@ -91,11 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['venta'])) {
         $ClaveTrabajador = $_SESSION['ClaveTrabajador'];
 
         foreach ($productosVenta as $producto) {
-            $descripcion = $producto['nombre'];
+            $descripcion = strtoupper($producto['nombre']);
             $precioUnitario = floatval($producto['precio']);
             $cantidad = floatval($producto['cantidad']);
-            $codigoBarras = $producto['codigo_barras'];
-            $marca = $producto['marca'];
+            $codigoBarras = strtoupper($producto['codigo_barras']);
+            $marca = strtoupper($producto['marca']);
             $precioFinal = $precioUnitario * $cantidad;
 
             // Insertar venta
@@ -151,36 +151,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['venta'])) {
     exit();
 }
 
-// Procesar cotización
+// Procesar cotización y guardar en BD
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
     try {
-        // Generar folio único para cotización
+        // Iniciar transacción
+        pg_query($conn, "BEGIN");
+        if (!isset($_SESSION['idNegocio'])) {
+            throw new Exception("No se encontró el ID del negocio");
+        }
+        $Id_Negocios = intval($_SESSION['idNegocio']);
+        $ClaveTrabajador = $_SESSION['ClaveTrabajador'];
+        
+        // Generar folio único
         $folio = 'COT-' . date('YmdHis');
         $total = 0;
-        $productos = [];
-        foreach ($_POST['cotizacion']['productos'] as $producto) {
-            $precio = floatval($producto['precio']);
+
+        $productosCotizacion = json_decode($_POST['cotizacion']['productos'], true);
+
+        $queryCotizacion = "INSERT INTO cotizaciones 
+            (folio, descripcion, preciosu, cantidades, codigosbarras, marcas, preciofinal, clavetrabajador, fecha, idnegocio) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)";
+
+        foreach ($productosCotizacion as $producto) {
+            $descripcion = strtoupper($producto['nombre']);
+            $precioUnitario = floatval($producto['precio']);
             $cantidad = floatval($producto['cantidad']);
-            $subtotal = $precio * $cantidad;
-            $productos[] = [
-                'nombre' => $producto['nombre'],
-                'precio' => $precio,
-                'cantidad' => $cantidad,
-                'subtotal' => $subtotal
-            ];
-            $total += $subtotal;
+            $codigoBarras = strtoupper($producto['codigo_barras']);
+            $marca = strtoupper($producto['marca']);
+            $precioFinal = $precioUnitario * $cantidad;
+            $total += $precioFinal;
+
+            $result = pg_query_params($conn, $queryCotizacion, array(
+                $folio,
+                $descripcion,
+                $precioUnitario,
+                $cantidad,
+                $codigoBarras,
+                $marca,
+                $precioFinal,
+                $ClaveTrabajador,
+                $Id_Negocios
+            ));
+            if (!$result) {
+                throw new Exception("Error al guardar el producto: {$producto['nombre']} - " . pg_last_error($conn));
+            }
         }
-        $_SESSION['cotizacion'] = [
+
+        pg_query($conn, "COMMIT");
+
+        echo json_encode([
+            'success' => true,
+            'mensaje' => "Cotización guardada. Folio: $folio",
             'folio' => $folio,
-            'productos' => $productos,
-            'total' => $total,
-            'fecha' => date('Y-m-d H:i:s')
-        ];
-        $_SESSION['message'] = "Cotización generada. Folio: $folio - Total: $" . number_format($total, 2);
+            'total' => number_format($total, 2),
+            'productos' => $productosCotizacion
+        ]);
+
     } catch (Exception $e) {
-        $_SESSION['error'] = "Error al generar cotización: " . $e->getMessage();
+        pg_query($conn, "ROLLBACK");
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
     }
-    header("Location: Dashboard.php");
     exit();
 }
 ?>
@@ -388,13 +421,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+
+        #tablaProductosSimilares {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        #tablaProductosSimilares th, #tablaProductosSimilares td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #tablaProductosSimilares th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        #tablaProductosSimilares tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        #tablaProductosSimilares button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #tablaProductosSimilares button:hover {
+            background-color: #091f5e;
+        }
     </style>
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
-
     <?php if (isset($_SESSION['venta_exitosa'])): ?>
         <script>
             Swal.fire({
@@ -435,7 +501,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
         unset($_SESSION['venta_error']);
         ?>
     <?php endif; ?>
-
     <header>
         <div class="header-pt1">
             <img src="../img/LogoPuroBlanco.png" alt="Logo">
@@ -448,13 +513,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
     <section>
         <div class="Data">
             <div class="Data-pt1">
-
+                <!-- Formulario para cargar cotización -->
+                <form id="formCargarCotizacion" class="form-bus">
+                    <input type="text" autocomplete="off" id="folioCotizacion" placeholder="Folio de Cotización" class="inBus">
+                    <button type="button" id="btnCargarCotizacion" class="btn-bus">Cargar Cotización</button>
+                </form>
                 <form id="searchForm" class="form-bus">
-                    <input type="text" id="searchInput" placeholder="Código de Barras, Nombre o Código de Producto" class="inBus" autofocus>
+                    <input type="text" autocomplete="off" id="searchInput" placeholder="Código de Barras, Nombre o Código de Producto" class="inBus" autofocus>
                     <button type="button" id="searchBtn" class="btn-bus">Buscar</button>
                 </form>
 
-                <form id="saleForm" method="post">
+                <form id="saleForm" method="post" autocomplete="off">
                     <table id="productsTable">
                         <thead>
                             <tr>
@@ -482,8 +551,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
             <div class="Op-1">
                 <button id="btnVenta">Realizar venta</button>
                 <button id="btnCotizacion">Realizar Cotización</button>
-                <!-- <button onclick="window.location.href='Catalogo.php'">Catálogo</button>
-                <button onclick="window.location.href='Clientes.php'">Clientes</button>-->
+                <button onclick="window.location.href='./Catalogo/Index.php'">Catálogo</button>
+                <!-- <button onclick="window.location.href='Clientes.php'">Clientes</button>-->
             </div>
             <div class="Op-2">
                 <button onclick="window.location.href='Inventario.php'">Inventario</button>
@@ -492,6 +561,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cotizacion'])) {
             </div>
         </div>
     </section>
+
+    <!-- Contenido previo -->
+
+<!-- Modal de Productos Similares -->
+<div id="modalProductosSimilares" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999;">
+    <div style="background:white; margin:5% auto; padding:20px; width:60%; max-height:70vh; overflow-y:auto; border-radius:8px;">
+        <h3>Productos Similares Encontrados</h3>
+        <table id="tablaProductosSimilares" style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Código Producto</th>
+                    <th>Precio</th>
+                    <th>Existencia</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <br>
+        <button onclick="cerrarModal()" style="float:right;">Cerrar</button>
+    </div>
+</div>
+
+<!-- Aquí va tu script -->
+<script>
+    // Variables globales
+    const productsTableBody = document.getElementById('productsTableBody');
+    const cart = {};
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 <script>
@@ -506,55 +605,199 @@ document.addEventListener('DOMContentLoaded', function () {
     // Objeto para almacenar los productos en el carrito
     const cart = {};
 
-    // Función para buscar productos
-    async function searchProduct() {
-        const searchTerm = searchInput.value.trim();
-        if (searchTerm.length === 0) {
-            alert('Por favor ingrese un término de búsqueda');
-            return;
-        }
-        try {
-            const response = await fetch('Dashboard.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `search_term=${encodeURIComponent(searchTerm)}`
-            });
-            const result = await response.json();
-            if (result.success && result.data.length > 0) {
-                let productFound = null;
-                for (const product of result.data) {
-                    if (cart[product.codigobarras]) {
-                        productFound = product;
-                        break;
-                    }
-                }
-                if (productFound) {
-                    const row = document.querySelector(`tr[data-barcode="${productFound.codigobarras}"]`);
-                    const inputCantidad = row.querySelector('input[name="cantidad"]');
-                    let currentQuantity = parseFloat(inputCantidad.value);
-                    const maxStock = productFound.existencia;
-                    if (currentQuantity + 1 > maxStock) {
-                        alert(`No hay suficiente stock para ${productFound.nombre}. Máximo disponible: ${maxStock}`);
-                        return;
-                    }
-                    inputCantidad.value = (currentQuantity + 1).toFixed(2);
-                    cart[productFound.codigobarras].cantidad = currentQuantity + 1;
-                    updateSubtotal(row, productFound.precio);
-                } else {
-                    addProductToCart(result.data[0]);
-                }
-                searchInput.value = '';
-                searchInput.focus();
-            } else {
-                alert('No se encontraron productos con ese criterio');
-            }
-        } catch (error) {
-            console.error('Error al buscar producto:', error);
-            alert('Error al buscar producto');
-        }
+
+
+        // Función para agregar producto al carrito
+    window.addProductToCart = function(product) {
+    const existencia = parseFloat(product.existencia);
+    const precio = parseFloat(product.precio);
+
+    cart[product.codigobarras] = {
+        nombre: product.nombre,
+        precio: precio,
+        cantidad: 1.0,
+        stock: existencia,
+        codigo_barras: product.codigobarras,
+        marca: product.marca || ''
+    };
+
+    const row = document.createElement('tr');
+    row.className = 'product-row';
+    row.dataset.barcode = product.codigobarras;
+
+    row.innerHTML = `
+        <td>${product.nombre}</td>
+        <td>$${precio.toFixed(2)}</td>
+        <td>
+            <input type="number" name="cantidad" value="1.00" min="0.01" step="0.01" max="${existencia.toFixed(2)}"
+                   onchange="updateQuantity('${product.codigobarras}', this.value)">
+        </td>
+        <td>${existencia.toFixed(2)}</td>
+        <td class="subtotal">$${precio.toFixed(2)}</td>
+        <td><button class="btn-eliminar" onclick="removeProduct('${product.codigobarras}')">Eliminar</button></td>
+    `;
+
+    productsTableBody.appendChild(row);
+    updateTotal(); // Esta línea es importante
+}
+
+    // Abre el modal con productos similares
+    window.abrirModal = function(productos) {
+        const tbody = document.querySelector('#tablaProductosSimilares tbody');
+        tbody.innerHTML = '';
+
+        productos.forEach(prod => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${prod.nombre}</td>
+                <td>${prod.codigoproducto}</td>
+                <td>$${parseFloat(prod.precio).toFixed(2)}</td>
+                <td>${prod.existencia}</td>
+                <td><button onclick='seleccionarProducto(${JSON.stringify(prod)})'>Seleccionar</button></td>`;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('modalProductosSimilares').style.display = 'block';
     }
+
+    // Selecciona producto del modal y lo agrega al carrito
+    window.seleccionarProducto = function(producto) {
+        addProductToCart(producto);
+        cerrarModal();
+    }
+
+    // Cierra el modal
+    window.cerrarModal = function() {
+        document.getElementById('modalProductosSimilares').style.display = 'none';
+    }
+
+    // Elimina producto del carrito
+    window.removeProduct = function(codigoBarras) {
+        delete cart[codigoBarras];
+        const row = document.querySelector(`tr[data-barcode="${codigoBarras}"]`);
+        if (row) row.remove();
+        updateTotal();
+    }
+
+
+    // Cargar cotización por folio
+document.getElementById('btnCargarCotizacion').addEventListener('click', async () => {
+    const folio = document.getElementById('folioCotizacion').value.trim();
+    if (!folio) {
+        alert('Por favor ingrese un folio válido');
+        return;
+    }
+
+    try {
+        const response = await fetch(`obtener_cotizacion.php?folio=${encodeURIComponent(folio)}`);
+        const data = await response.json();
+
+        if (data.success) {
+            // Limpiar carrito actual
+            clearCart();
+
+            // Agregar productos a la tabla
+            data.productos.forEach(p => {
+                const prod = {
+                    nombre: p.descripcion,
+                    precio: parseFloat(p.preciosu),
+                    cantidad: parseFloat(p.cantidades),
+                    codigobarras: p.codigosbarras,
+                    marca: p.marcas,
+                    existencia: parseFloat(p.existencia) || 0
+                };
+                addProductToCart(prod);
+            });
+
+            Swal.fire({
+                title: 'Cotización Cargada',
+                text: `Folio: ${folio}`,
+                icon: 'success',
+                confirmButtonText: 'Aceptar'
+            });
+
+        } else {
+            Swal.fire('Error', data.error || 'Cotización no encontrada', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        Swal.fire('Error', 'Hubo un problema al cargar la cotización.', 'error');
+    }
+});
+
+async function searchProduct() {
+    const searchTerm = searchInput.value.trim();
+    if (!searchTerm) {
+        alert('Por favor ingrese un término de búsqueda');
+        return;
+    }
+
+    try {
+        const response = await fetch('Dashboard.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `search_term=${encodeURIComponent(searchTerm)}`
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data.length > 0) {
+            let matches = result.data;
+
+            // Buscar coincidencias exactas por código de barras o código de producto
+            const matchByBarcode = matches.find(p => p.codigobarras === searchTerm);
+            const matchByProductCode = matches.find(p => p.codigoproducto === searchTerm);
+
+            let productToUse = matchByBarcode || matchByProductCode || matches[0];
+
+            // Verificar si todos son iguales en codigobarras y codigoproducto
+            const allSameBarcode = matches.every(p => p.codigobarras === matches[0].codigobarras);
+            const allSameProductCode = matches.every(p => p.codigoproducto === matches[0].codigoproducto);
+
+            // Si todos son iguales en ambos campos, tratar como único
+            if (allSameBarcode && allSameProductCode && matches.length > 1) {
+                productToUse = matches[0];
+            }
+
+            // Filtrar si ya está en el carrito
+            if (cart[productToUse.codigobarras]) {
+                const row = document.querySelector(`tr[data-barcode="${productToUse.codigobarras}"]`);
+                const inputCantidad = row.querySelector('input[name="cantidad"]');
+                let currentQuantity = parseFloat(inputCantidad.value);
+                const maxStock = productToUse.existencia;
+
+                if (currentQuantity + 1 > maxStock) {
+                    alert(`No hay suficiente stock para ${productToUse.nombre}. Máximo disponible: ${maxStock}`);
+                    return;
+                }
+
+                inputCantidad.value = (currentQuantity + 1).toFixed(2);
+                cart[productToUse.codigobarras].cantidad = currentQuantity + 1;
+                updateSubtotal(row, productToUse.precio);
+
+            } else {
+                // Si hay más de uno con distintos datos, abre el modal
+                if (matches.length > 1 && (!allSameBarcode || !allSameProductCode)) {
+                    abrirModal(matches);
+                } else {
+                    addProductToCart(productToUse);
+                }
+            }
+
+            searchInput.value = '';
+            searchInput.focus();
+
+        } else {
+            alert('No se encontraron productos con ese criterio');
+        }
+
+    } catch (error) {
+        console.error('Error al buscar producto:', error);
+        alert('Error al buscar producto');
+    }
+}
 
     // Escuchar eventos de búsqueda
     searchBtn.addEventListener('click', searchProduct);
@@ -566,36 +809,57 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Función para agregar producto al carrito
-    function addProductToCart(product) {
-        const existencia = parseFloat(product.existencia);
-        const precio = parseFloat(product.precio);
-        cart[product.codigobarras] = {
-            nombre: product.nombre,
-            precio: precio,
-            cantidad: 1.0,
-            stock: existencia,
-            codigo_barras: product.codigobarras,
-            marca: product.marca
-        };
-        const row = document.createElement('tr');
-        row.className = 'product-row';
-        row.dataset.barcode = product.codigobarras;
-        row.innerHTML = `
-            <td>${product.nombre}</td>
-            <td>$${precio.toFixed(2)}</td>
-            <td>
-                <input type="number" name="cantidad" value="1.00" min="0.01" step="0.01" max="${existencia.toFixed(2)}"
-                    onchange="updateQuantity('${product.codigobarras}', this.value)">
-            </td>
-            <td>${existencia.toFixed(2)}</td>
-            <td class="subtotal">$${precio.toFixed(2)}</td>
-            <td>
-                <button class="btn-eliminar" onclick="removeProduct('${product.codigobarras}')">Eliminar</button>
-            </td>
-        `;
-        productsTableBody.appendChild(row);
-        updateTotal();
-    }
+function addProductToCart(product) {
+    const existencia = parseFloat(product.existencia);
+    const precio = parseFloat(product.precio);
+
+    // Asegúrate de que todas las propiedades necesarias estén presentes
+    cart[product.codigobarras] = {
+        nombre: product.nombre,
+        precio: precio,
+        cantidad: 1.0,
+        stock: existencia,
+        codigo_barras: product.codigobarras,
+        marca: product.marca || ''
+    };
+
+    // Crear fila en la tabla del carrito
+    const row = document.createElement('tr');
+    row.className = 'product-row';
+    row.dataset.barcode = product.codigobarras;
+
+    row.innerHTML = `
+        <td>${product.nombre}</td>
+        <td>$${precio.toFixed(2)}</td>
+        <td>
+            <input type="number" name="cantidad" value="1.00" min="0.01" step="0.01" max="${existencia.toFixed(2)}"
+                   onchange="updateQuantity('${product.codigobarras}', this.value)">
+        </td>
+        <td>${existencia.toFixed(2)}</td>
+        <td class="subtotal">$${precio.toFixed(2)}</td>
+        <td>
+            <button class="btn-eliminar" onclick="removeProduct('${product.codigobarras}')">Eliminar</button>
+        </td>
+    `;
+
+    // Agregar fila a la tabla
+    productsTableBody.appendChild(row);
+
+    // Actualizar total
+    updateTotal();
+}
+
+// Selecciona producto del modal y lo agrega al carrito
+function seleccionarProducto(producto) {
+    addProductToCart(producto);
+    cerrarModal();
+}
+
+// Cierra el modal
+function cerrarModal() {
+    document.getElementById('modalProductosSimilares').style.display = 'none';
+}
+
 
     // Actualizar cantidad
     window.updateQuantity = function(barcode, quantity) {
@@ -643,7 +907,7 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     // Calcular total
-    function updateTotal() {
+    window.updateTotal = function() {
         let total = 0;
         const rows = document.querySelectorAll('.product-row');
         rows.forEach(row => {
@@ -712,29 +976,51 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Realizar cotización (opcional)
-    btnCotizacion.addEventListener('click', function () {
-        if (Object.keys(cart).length === 0) {
-            alert('No hay productos en el carrito');
-            return;
-        }
-        if (confirm('¿Generar cotización?')) {
-            const formData = new FormData();
-            formData.append('cotizacion[productos]', JSON.stringify(Object.values(cart)));
-            fetch('Dashboard.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (response.redirected) {
-                    window.location.href = response.url;
+btnCotizacion.addEventListener('click', function () {
+    if (Object.keys(cart).length === 0) {
+        Swal.fire('Oops!', 'No hay productos en el carrito.', 'warning');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('cotizacion[productos]', JSON.stringify(Object.values(cart)));
+
+    fetch('Dashboard.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Mostrar SweetAlert con opciones
+            Swal.fire({
+                title: 'Cotización Guardada',
+                html: `
+                    <p><strong>Folio:</strong> ${data.folio}</p>
+                    <p><strong>Total:</strong> $${data.total}</p>
+                `,
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: 'Aceptar',
+                cancelButtonText: 'Imprimir Ticket'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    clearCart(); // Limpia el carrito visualmente
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    // Redirigir a imprimir ticket
+                    window.open(`imprimir_cotizacion.php?folio=${data.folio}`, '_blank');
+                    clearCart(); // Limpia el carrito visualmente
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error al generar cotización');
             });
+        } else {
+            Swal.fire('Error', data.error, 'error');
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        Swal.fire('Error', 'Hubo un problema al generar la cotización.', 'error');
     });
+});
 
     // Limpiar carrito visual
     function clearCart() {
@@ -743,6 +1029,28 @@ document.addEventListener('DOMContentLoaded', function () {
         Object.keys(cart).forEach(key => delete cart[key]);
     }
 });
+
+//
+
+// Abre el modal con productos similares
+function abrirModal(productos) {
+    const tbody = document.querySelector('#tablaProductosSimilares tbody');
+    tbody.innerHTML = '';
+
+    productos.forEach(prod => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${prod.nombre}</td>
+            <td>${prod.codigoproducto}</td>
+            <td>$${parseFloat(prod.precio).toFixed(2)}</td>
+            <td>${prod.existencia}</td>
+            <td><button onclick='seleccionarProducto(${JSON.stringify(prod)})'>Seleccionar</button></td>`;
+        tbody.appendChild(tr);
+    });
+
+    document.getElementById('modalProductosSimilares').style.display = 'block';
+}
+
 </script>
 </body>
 
